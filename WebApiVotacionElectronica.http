@@ -1,0 +1,6 @@
+@WebApiVotacionElectronica_HostAddress = http://localhost:5226
+
+GET {{WebApiVotacionElectronica_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
