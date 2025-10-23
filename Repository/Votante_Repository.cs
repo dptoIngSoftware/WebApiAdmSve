@@ -19,6 +19,11 @@ namespace WebApiVotacionElectronica.Repository
             return SaveAll(Votantes.Count);
         }
 
+        public bool Exists(int ID_Votante, int ID_Votacion)
+        {
+            return context.SVE_Votantes.Any(v => v.Id == ID_Votante && v.Votacion_ID == ID_Votacion);
+        }
+
         public List<Votante> GetAllByVotacionID(int ID)
         {
             return context.SVE_Votantes.Where(v => v.Votacion_ID == ID).ToList();

@@ -4,6 +4,7 @@ namespace WebApiVotacionElectronica.Repository.Interfaces
 {
     public interface IVotante_Repository
     {
+        bool Exists(int ID_Votante, int ID_Votacion);
         List<Votante> GetAllByVotacionID(int ID);
         Votante GetByID(int ID);
         bool Ha_Votado(int ID_Votante, int ID_Votacion);

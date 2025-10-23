@@ -5,69 +5,86 @@ using System.Text;
 using WebApiVotacionElectronica.Context;
 using WebApiVotacionElectronica.Repository;
 using WebApiVotacionElectronica.Repository.Interfaces;
+using WebApiVotacionElectronica.Services;
 using WebApiVotacionElectronica.Tools;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
 
 builder.Services.AddControllers();
 builder.Services.AddCors();
-builder.Services.AddDbContext<DBContext>(x => x.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConectionString")));
+builder.Services.AddDbContext<DBContext>(x =>
+    x.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConectionString")));
 
-//interfaces and repositories
-builder.Services.AddScoped<ICandidato_Repository,Candidato_Repository>();
-builder.Services.AddScoped<IEstado_Candidato_Repository,Estado_Candidato_Repository>();
-builder.Services.AddScoped<IEstado_Votacion_Repository,Estado_Votacion_Repository>();
-builder.Services.AddScoped<ISede_Repository,Sede_Repository>();
-builder.Services.AddScoped<IVotacion_Repository,Votacion_Repository>();
-builder.Services.AddScoped<IVotante_Repository,Votante_Repository>();
-builder.Services.AddScoped<IVoto_Repository,Voto_Repository>();
+// Repositorios
+builder.Services.AddScoped<ICandidato_Repository, Candidato_Repository>();
+builder.Services.AddScoped<IEstado_Candidato_Repository, Estado_Candidato_Repository>();
+builder.Services.AddScoped<IEstado_Votacion_Repository, Estado_Votacion_Repository>();
+builder.Services.AddScoped<ISede_Repository, Sede_Repository>();
+builder.Services.AddScoped<IVotacion_Repository, Votacion_Repository>();
+builder.Services.AddScoped<IVotante_Repository, Votante_Repository>();
+builder.Services.AddScoped<IVoto_Repository, Voto_Repository>();
 
-//services
- builder.Services.AddControllersWithViews().AddNewtonsoftJson(options => options.SerializerSettings.ReferenceLoopHandling = Newtonsoft.Json.ReferenceLoopHandling.Ignore);
+builder.Services.AddControllersWithViews()
+    .AddNewtonsoftJson(options =>
+    options.SerializerSettings.ReferenceLoopHandling = Newtonsoft.Json.ReferenceLoopHandling.Ignore
+);
 
+// Configurar JWT
 //token
-builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJwtBearer(options =>
-{
-    options.TokenValidationParameters = new TokenValidationParameters()
+builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
+    .AddJwtBearer(options =>
     {
-        ValidateIssuerSigningKey = true,
-        IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(builder.Configuration["Jwt:key"])),
-        ValidateIssuer = false,
-        ValidateAudience = false,
-        ValidateLifetime = true,
-        ClockSkew = TimeSpan.Zero,
-    };
+        options.TokenValidationParameters = new TokenValidationParameters()
+        {
+            ValidateIssuerSigningKey = true,
+            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(builder.Configuration["Jwt:key"])),
+            ValidateIssuer = false,
+            ValidateAudience = false,
+            ValidateLifetime = true, // valida exp
+            ClockSkew = TimeSpan.Zero, // sin tolerancia extra
+        };
+
+        // Ignoramos por completo iat
+        options.Events = new JwtBearerEvents
+        {
+            OnTokenValidated = context =>
+            {
+                // No hacemos nada con iat
+                return Task.CompletedTask;
+            }
+        };
+    });
+
+// CORS
+builder.Services.AddCors(options =>
+{
+    options.AddPolicy("Cors", policy =>
+    {
+        policy.AllowAnyOrigin()
+              .AllowAnyMethod()
+              .AllowAnyHeader();
+    });
 });
 
+builder.Services.AddSingleton<IBackgroundEmailQueue, BackgroundEmailQueue>();
+builder.Services.AddHostedService<EmailBackgroundService>();
 
-//cors
-builder.Services.AddCors(options => options.AddPolicy("Cors",
-            builder =>
-            {
-                builder.
-                AllowAnyOrigin().
-                AllowAnyMethod().
-                AllowAnyHeader();
-            }
-));
-
+Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
-
+//Middleware HTTP
 app.UseHttpsRedirection();
-
 app.UseRouting();
 
+// CORS debe ir antes de Authentication
 app.UseCors("Cors");
 
 app.UseAuthentication();
-
 app.UseAuthorization();
 
+// Middleware personalizado (manejo de errores)
 app.UseMiddleware<ErrorHandlerMiddleware>();
 
 app.MapControllers();

@@ -1,10 +1,22 @@
-﻿using Microsoft.AspNetCore.Authorization;
+﻿using ExcelDataReader;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.IdentityModel.Tokens;
+using SimpleBase;
+using System.Buffers.Text;
+using System.Data;
+using System.IdentityModel.Tokens.Jwt;
+using System.Security.Claims;
+using System.Security.Cryptography;
+using System.Security.Cryptography.Xml;
+using System.Text;
+using WebApiVotacionElectronica.Helper;
 using WebApiVotacionElectronica.Models.DataHolder;
 using WebApiVotacionElectronica.Models.SVE;
 using WebApiVotacionElectronica.Repository;
 using WebApiVotacionElectronica.Repository.Interfaces;
+using WebApiVotacionElectronica.Services;
 
 namespace WebApiVotacionElectronica.Controllers.SVE
 {
@@ -12,7 +24,10 @@ namespace WebApiVotacionElectronica.Controllers.SVE
     [ApiController]
     public class VotacionController : ControllerBase
     {
-        private readonly Voto_Repository voto_Repository;
+        private readonly IConfiguration configuration;
+        private readonly IBackgroundEmailQueue emailQueue;
+        private readonly ILogger<VotacionController> logger;
+        private readonly IVoto_Repository voto_Repository;
         private readonly ICandidato_Repository candidato_Repository;
         private readonly IVotante_Repository votante_Repository;
         private readonly IEstado_Candidato_Repository estado_Candidato_Repository;
@@ -20,8 +35,11 @@ namespace WebApiVotacionElectronica.Controllers.SVE
         private readonly ISede_Repository sede_Repository;
         private readonly IEstado_Votacion_Repository estado_Votacion_Repository;
 
-        public VotacionController(Voto_Repository voto_Repository,ICandidato_Repository candidato_Repository, IVotante_Repository votante_Repository, IEstado_Candidato_Repository estado_Candidato_Repository, IVotacion_Repository votacion_Repository, ISede_Repository sede_Repository, IEstado_Votacion_Repository estado_Votacion_Repository)
+        public VotacionController(IConfiguration configuration, IBackgroundEmailQueue emailQueue, ILogger<VotacionController> logger, IVoto_Repository voto_Repository, ICandidato_Repository candidato_Repository, IVotante_Repository votante_Repository, IEstado_Candidato_Repository estado_Candidato_Repository, IVotacion_Repository votacion_Repository, ISede_Repository sede_Repository, IEstado_Votacion_Repository estado_Votacion_Repository)
         {
+            this.configuration = configuration;
+            this.emailQueue = emailQueue;
+            this.logger = logger;
             this.voto_Repository = voto_Repository;
             this.candidato_Repository = candidato_Repository;
             this.votante_Repository = votante_Repository;
@@ -32,18 +50,20 @@ namespace WebApiVotacionElectronica.Controllers.SVE
         }
 
 
-        [Authorize]
-        [HttpGet("GetAll")]
+        //[Authorize]
+        [HttpPost("GetAll")]
         public IActionResult GetAllVotaciones([FromBody] Filtro_DataHolder Filtro)
         {
             var votaciones = votacion_Repository.GetAll(Filtro);
             return Ok(votaciones);
         }
 
-        [Authorize]
+        //[Authorize]
         [HttpPost("Crear")]
-        public IActionResult CrearVotacion([FromBody] Votacion_DataHolder Nueva_Votacion)
+        public async Task<IActionResult> CrearVotacion([FromForm] Votacion_DataHolder Nueva_Votacion)
         {
+            Nueva_Votacion.Candidatos = await LeerExcelPersonasAsync(Nueva_Votacion.Candidatos_doc);
+            Nueva_Votacion.Votantes = await LeerExcelPersonasAsync(Nueva_Votacion.Votantes_doc);
 
             // Lógica para crear una nueva votación
             //1.Se crea la votacion
@@ -76,7 +96,7 @@ namespace WebApiVotacionElectronica.Controllers.SVE
                     Votacion_ID = NV.Id,
                     Rut = partes[0],
                     DV = partes[1],
-                    Nombre_Completo = candidato.Nombre_Completo,
+                    Nombre_Completo = candidato.Nombre_Completo.ToUpperInvariant(),
                     Email = candidato.Email,
                     Cargo = candidato.Cargo,
                     Unidad = candidato.Unidad,
@@ -122,14 +142,14 @@ namespace WebApiVotacionElectronica.Controllers.SVE
         }
 
 
-        [Authorize]
+        //[Authorize]
         [HttpPut]
         [Route("Activar/{ID}")]
         public IActionResult ActivarVotacion(int ID)
         {
             Votacion votacion = votacion_Repository.GetById(ID);
             votacion.Activa = true;
-            votacion.Estado_Votacion = estado_Votacion_Repository.GetEstadoByDescr("Activa");
+            votacion.Estado_Votacion = estado_Votacion_Repository.GetEstadoByDescr("Activada");
 
             if (!votacion_Repository.Update(votacion))
             {
@@ -198,7 +218,7 @@ namespace WebApiVotacionElectronica.Controllers.SVE
                 }
             }
 
-            if(!voto_Repository.CreateAll(Votos)) 
+            if (!voto_Repository.CreateAll(Votos))
             {
                 if (Votos.Count == 1)
                 {
@@ -219,6 +239,246 @@ namespace WebApiVotacionElectronica.Controllers.SVE
 
             return Ok("Voto registrado correctamente");
 
+        }
+
+
+
+        //envio correos
+        [HttpPost("Correos/{ID}")]
+        public IActionResult EnviarCorreosVotacion(int ID)
+        {
+            //Lógica para enviar correos
+            List<Votante> Votantes = votante_Repository.GetAllByVotacionID(ID);
+            Votacion votacion = votacion_Repository.GetById(ID);
+            foreach (var votante in Votantes)
+            {
+                emailQueue.Enqueue(async () =>
+                {
+                    await MailHelper.EnviarCorreoPersonalizadoAsync(
+                        configuration,
+                        votante.Email,
+                        votante.Nombre_Completo,
+                        votacion.Nombre,
+                        "TEST"
+                    );
+
+                    logger.LogInformation($"Correo encolado para {votante.Nombre_Completo} ({votante.Email})");
+                });
+            }
+
+            return Ok(new { mensaje = $"Se encolaron {Votantes.Count} correos para envío en segundo plano." });
+
+        }
+
+        //funcoines de apoyo
+        [HttpGet("TEST")]
+        public IActionResult TEST()
+        {
+            string original = "19952098-100-4";
+            string claveSecreta = "T5lne8%4#r7=x%09"; // 16 bytes
+                                  
+
+            string encriptado = Encrypt(original, claveSecreta);
+
+            return Ok(new { original, encriptado });
+        }
+
+        [HttpPost("GetVotar")]
+        public IActionResult TEST2([FromBody] string CODE)
+        {
+            if (!IsValidBase58(CODE))
+            {
+                return BadRequest("Código inválido");
+            }
+
+            try
+            {
+                string claveSecreta = "T5lne8%4#r7=x%09"; // 16 bytes
+
+                string desencriptado = Decrypt(CODE, claveSecreta);
+
+
+                string[] partes = desencriptado.Split('-');
+
+                if (!votante_Repository.Exists(int.Parse(partes[1]),int.Parse(partes[2])))
+                {
+                    return BadRequest("Votante no existe en la votacion");
+                }
+
+                Votante votante = votante_Repository.GetByID(int.Parse(partes[1]));
+
+                if (votante.Ha_Votado)
+                {
+                    return BadRequest("El votante ya ha votado en esta votacion");
+                }
+
+                Votacion votacion = votacion_Repository.GetById(int.Parse(partes[2]));
+
+                List<Candidato> candidatos = candidato_Repository.GetAllByVotacionID(votacion.Id);
+
+                Votador_Dataholder votador = new()
+                {
+                    Votacion = votacion,
+                    IdVotante = votante.Id,
+                    Has_Voted = votante.Ha_Votado,
+                    Candidatos = candidatos,
+                    TKN = crearToken()
+                };
+                
+                return Ok(votador);
+
+
+            }
+            catch
+            {
+                return BadRequest("Código dañado");
+            }
+
+        }
+
+        private static async Task<List<Persona_DataHolder>> LeerExcelPersonasAsync(IFormFile archivo)
+        {
+            var lista = new List<Persona_DataHolder>();
+
+            using (var stream = new MemoryStream())
+            {
+                await archivo.CopyToAsync(stream);
+                stream.Position = 0;
+
+                using (var reader = ExcelReaderFactory.CreateReader(stream))
+                {
+                    var dataSet = reader.AsDataSet(new ExcelDataSetConfiguration()
+                    {
+                        ConfigureDataTable = _ => new ExcelDataTableConfiguration()
+                        {
+                            UseHeaderRow = true // Usa la primera fila como encabezado
+                        }
+                    });
+
+                    var tabla = dataSet.Tables[0]; // Primera hoja
+
+                    foreach (DataRow fila in tabla.Rows)
+                    {
+                        var persona = new Persona_DataHolder
+                        {
+                            Rut = fila["Rut"]?.ToString()?.Trim(),
+                            Nombre_Completo = fila["Nombre_Completo"]?.ToString()?.Trim(),
+                            Email = fila["Email"]?.ToString()?.Trim(),
+                            Cargo = fila["Cargo"]?.ToString()?.Trim(),
+                            Unidad = fila["Unidad"]?.ToString()?.Trim()
+                        };
+
+                        lista.Add(persona);
+                    }
+                }
+            }
+
+            return lista;
+        }
+
+
+        private static string Encrypt(string plainText, string key)
+        {
+            byte[] keyBytes = Encoding.UTF8.GetBytes(key);
+            byte[] iv = new byte[IvLength];
+            using (var rng = RandomNumberGenerator.Create())
+                rng.GetBytes(iv, 0, RandomIvBytes);
+
+            using (Aes aes = Aes.Create())
+            {
+                aes.Key = keyBytes;
+                aes.IV = iv;
+                aes.Mode = CipherMode.CBC;
+                aes.Padding = PaddingMode.PKCS7;
+
+                using (var ms = new MemoryStream())
+                {
+                    ms.Write(iv, 0, IvLength);
+                    using (var cs = new CryptoStream(ms, aes.CreateEncryptor(), CryptoStreamMode.Write))
+                    using (var sw = new StreamWriter(cs))
+                        sw.Write(plainText);
+
+                    byte[] encrypted = ms.ToArray();
+                    // Base58 limpio, sin = + /
+                    return Base58.Bitcoin.Encode(encrypted);
+                }
+            }
+        }
+
+         private static string Decrypt(string cipherText, string key)
+        {
+            byte[] fullCipher = Base58.Bitcoin.Decode(cipherText);
+            byte[] keyBytes = Encoding.UTF8.GetBytes(key);
+
+            byte[] iv = new byte[IvLength];
+            Array.Copy(fullCipher, 0, iv, 0, IvLength);
+
+            byte[] cipher = new byte[fullCipher.Length - IvLength];
+            Array.Copy(fullCipher, IvLength, cipher, 0, cipher.Length);
+
+            using (Aes aes = Aes.Create())
+            {
+                aes.Key = keyBytes;
+                aes.IV = iv;
+                aes.Mode = CipherMode.CBC;
+                aes.Padding = PaddingMode.PKCS7;
+
+                using (var ms = new MemoryStream(cipher))
+                using (var cs = new CryptoStream(ms, aes.CreateDecryptor(), CryptoStreamMode.Read))
+                using (var sr = new StreamReader(cs))
+                    return sr.ReadToEnd();
+            }
+        }
+
+        private static readonly int IvLength = 16; // AES requiere 16 bytes IV
+        private static readonly int RandomIvBytes = 8; // Solo 8 aleatorios, 8 en cero
+
+        private static bool IsValidBase58(string input)
+        {
+            if (string.IsNullOrWhiteSpace(input))
+                return false;
+
+            // Rango razonable para evitar strings demasiado cortos o largos
+            if (input.Length < 16 || input.Length > 200)
+                return false;
+
+            // Solo caracteres Base58 válidos
+            return input.All(c => "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz".Contains(c));
+        }
+
+        private string crearToken()
+        {
+            try
+            {
+                string subject = new ConfigurationBuilder().AddJsonFile("appsettings.json").Build().GetSection("Jwt")["Subject"];
+                string keySettings = new ConfigurationBuilder().AddJsonFile("appsettings.json").Build().GetSection("Jwt")["Key"];
+                string issuer = new ConfigurationBuilder().AddJsonFile("appsettings.json").Build().GetSection("Jwt")["Issuer"];
+                string audience = new ConfigurationBuilder().AddJsonFile("appsettings.json").Build().GetSection("Jwt")["Audience"];
+                //string IdSis = new ConfigurationBuilder().AddJsonFile("appsettings.json").Build().GetSection("MySettings")["idSis"];
+
+                var claims = new[] {
+                    new Claim(JwtRegisteredClaimNames.Sub, subject),
+                    new Claim(JwtRegisteredClaimNames.Jti, Guid.NewGuid().ToString()),
+                    new Claim(JwtRegisteredClaimNames.Iat, new DateTimeOffset(DateTime.UtcNow).ToUnixTimeSeconds().ToString(),ClaimValueTypes.Integer64),
+                    new Claim(ClaimTypes.Role,"ADM001")
+                    //new Claim("Id", IdSis),
+
+                   };
+
+                var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(keySettings));
+
+                var signIn = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
+
+                var token = new JwtSecurityToken(issuer, audience, claims, expires: DateTime.UtcNow.AddHours(10), signingCredentials: signIn);
+
+                return new JwtSecurityTokenHandler().WriteToken(token);
+            }
+            catch (Exception ex)
+            {
+                // Info  
+                System.Diagnostics.Debug.WriteLine(ex);
+                throw ex;
+            }
         }
 
     }
