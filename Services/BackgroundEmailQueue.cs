@@ -1,30 +1,31 @@
 ﻿using System.Collections.Concurrent;
+using WebApiVotacionElectronica.Models.Tools;
 
 namespace WebApiVotacionElectronica.Services
 {
     public interface IBackgroundEmailQueue
     {
-        void Enqueue(Func<Task> workItem);
-        Task<Func<Task>> DequeueAsync(CancellationToken cancellationToken);
+        void Enqueue(EmailWorkItem workItem);
+        Task<EmailWorkItem> DequeueAsync(CancellationToken cancellationToken);
     }
 
     public class BackgroundEmailQueue : IBackgroundEmailQueue
     {
-        private readonly ConcurrentQueue<Func<Task>> _workItems = new();
-        private readonly SemaphoreSlim _signal = new(0);
+        private ConcurrentQueue<EmailWorkItem> _workItems = new();
+        private SemaphoreSlim _signal = new(0);
 
-        public void Enqueue(Func<Task> workItem)
+        public void Enqueue(EmailWorkItem workItem)
         {
             if (workItem == null) throw new ArgumentNullException(nameof(workItem));
             _workItems.Enqueue(workItem);
             _signal.Release();
         }
 
-        public async Task<Func<Task>> DequeueAsync(CancellationToken cancellationToken)
+        public async Task<EmailWorkItem> DequeueAsync(CancellationToken cancellationToken)
         {
             await _signal.WaitAsync(cancellationToken);
             _workItems.TryDequeue(out var workItem);
-            return workItem!;
+            return workItem;
         }
     }
 }

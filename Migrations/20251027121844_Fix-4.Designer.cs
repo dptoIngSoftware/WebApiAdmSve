@@ -3,6 +3,7 @@ using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using WebApiVotacionElectronica.Context;
 
@@ -11,9 +12,11 @@ using WebApiVotacionElectronica.Context;
 namespace WebApiVotacionElectronica.Migrations
 {
     [DbContext(typeof(DBContext))]
-    partial class DBContextModelSnapshot : ModelSnapshot
+    [Migration("20251027121844_Fix-4")]
+    partial class Fix4
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -240,19 +243,20 @@ namespace WebApiVotacionElectronica.Migrations
 
                     SqlServerPropertyBuilderExtensions.UseIdentityColumn(b.Property<int>("Id"));
 
-                    b.Property<int?>("Candidato")
+                    b.Property<int?>("CandidatoId")
                         .HasColumnType("int");
 
                     b.Property<DateTime>("FechaVoto")
                         .HasColumnType("datetime2");
 
-                    b.Property<int>("Votacion_ID")
-                        .HasColumnType("int");
-
-                    b.Property<int>("Votante")
+                    b.Property<int>("VotanteId")
                         .HasColumnType("int");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("CandidatoId");
+
+                    b.HasIndex("VotanteId");
 
                     b.ToTable("SVE_Votos");
                 });
@@ -285,6 +289,23 @@ namespace WebApiVotacionElectronica.Migrations
                     b.Navigation("Estado_Votacion");
 
                     b.Navigation("Sede");
+                });
+
+            modelBuilder.Entity("WebApiVotacionElectronica.Models.SVE.Voto", b =>
+                {
+                    b.HasOne("WebApiVotacionElectronica.Models.SVE.Candidato", "Candidato")
+                        .WithMany()
+                        .HasForeignKey("CandidatoId");
+
+                    b.HasOne("WebApiVotacionElectronica.Models.SVE.Votante", "Votante")
+                        .WithMany()
+                        .HasForeignKey("VotanteId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("Candidato");
+
+                    b.Navigation("Votante");
                 });
 #pragma warning restore 612, 618
         }

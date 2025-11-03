@@ -13,6 +13,18 @@ namespace WebApiVotacionElectronica.Repository
             this.context = context;
         }
 
+        public async Task ActualizarEnvioCorreoAsync(int idUsuario, bool envioExitoso)
+        {
+            Votante votante = context.SVE_Votantes.Where(x => x.Id == idUsuario).FirstOrDefault();
+            if (votante == null)
+            {
+                return;
+            }
+
+            votante.Correo_Enviado = envioExitoso;
+            await context.SaveChangesAsync(); 
+        }
+
         public bool CreateAll(List<Votante> Votantes)
         {
             context.SVE_Votantes.AddRange(Votantes);
@@ -27,6 +39,11 @@ namespace WebApiVotacionElectronica.Repository
         public List<Votante> GetAllByVotacionID(int ID)
         {
             return context.SVE_Votantes.Where(v => v.Votacion_ID == ID).ToList();
+        }
+
+        public List<Votante> GetAllByVotacionIDPendientes(int ID)
+        {
+            return context.SVE_Votantes.Where(v => v.Votacion_ID == ID && v.Ha_Votado == false).ToList();
         }
 
         public Votante GetByID(int ID)

@@ -77,5 +77,10 @@ namespace WebApiVotacionElectronica.Repository
 
             return query.ToList();
         }
+
+        public Votacion GetByIdNoTrack(int id)
+        {
+            return context.SVE_Votaciones.Where(v => v.Id == id).Include(x => x.Sede).Include(x => x.Estado_Votacion).AsNoTracking().FirstOrDefault();
+        }
     }
 }

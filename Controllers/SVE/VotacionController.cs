@@ -2,6 +2,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.IdentityModel.Tokens;
 using SimpleBase;
 using System.Buffers.Text;
@@ -14,6 +15,7 @@ using System.Text;
 using WebApiVotacionElectronica.Helper;
 using WebApiVotacionElectronica.Models.DataHolder;
 using WebApiVotacionElectronica.Models.SVE;
+using WebApiVotacionElectronica.Models.Tools;
 using WebApiVotacionElectronica.Repository;
 using WebApiVotacionElectronica.Repository.Interfaces;
 using WebApiVotacionElectronica.Services;
@@ -24,6 +26,7 @@ namespace WebApiVotacionElectronica.Controllers.SVE
     [ApiController]
     public class VotacionController : ControllerBase
     {
+        private readonly IServiceProvider serviceProvider;
         private readonly IConfiguration configuration;
         private readonly IBackgroundEmailQueue emailQueue;
         private readonly ILogger<VotacionController> logger;
@@ -35,8 +38,9 @@ namespace WebApiVotacionElectronica.Controllers.SVE
         private readonly ISede_Repository sede_Repository;
         private readonly IEstado_Votacion_Repository estado_Votacion_Repository;
 
-        public VotacionController(IConfiguration configuration, IBackgroundEmailQueue emailQueue, ILogger<VotacionController> logger, IVoto_Repository voto_Repository, ICandidato_Repository candidato_Repository, IVotante_Repository votante_Repository, IEstado_Candidato_Repository estado_Candidato_Repository, IVotacion_Repository votacion_Repository, ISede_Repository sede_Repository, IEstado_Votacion_Repository estado_Votacion_Repository)
+        public VotacionController(IServiceProvider serviceProvider,IConfiguration configuration, IBackgroundEmailQueue emailQueue, ILogger<VotacionController> logger, IVoto_Repository voto_Repository, ICandidato_Repository candidato_Repository, IVotante_Repository votante_Repository, IEstado_Candidato_Repository estado_Candidato_Repository, IVotacion_Repository votacion_Repository, ISede_Repository sede_Repository, IEstado_Votacion_Repository estado_Votacion_Repository)
         {
+            this.serviceProvider = serviceProvider;
             this.configuration = configuration;
             this.emailQueue = emailQueue;
             this.logger = logger;
@@ -62,8 +66,16 @@ namespace WebApiVotacionElectronica.Controllers.SVE
         [HttpPost("Crear")]
         public async Task<IActionResult> CrearVotacion([FromForm] Votacion_DataHolder Nueva_Votacion)
         {
-            Nueva_Votacion.Candidatos = await LeerExcelPersonasAsync(Nueva_Votacion.Candidatos_doc);
-            Nueva_Votacion.Votantes = await LeerExcelPersonasAsync(Nueva_Votacion.Votantes_doc);
+            try
+            {
+                Nueva_Votacion.Candidatos = await LeerExcelPersonasAsync(Nueva_Votacion.Candidatos_doc);
+                Nueva_Votacion.Votantes = await LeerExcelPersonasAsync(Nueva_Votacion.Votantes_doc);
+            }
+            catch (Exception)
+            {
+
+                return BadRequest("XLSBAD");
+            }
 
             // Lógica para crear una nueva votación
             //1.Se crea la votacion
@@ -82,7 +94,7 @@ namespace WebApiVotacionElectronica.Controllers.SVE
 
             if (!votacion_Repository.Create(NV))
             {
-                return BadRequest("No se pudo crear la votacion");
+                return BadRequest("No se pudo crear la Votación");
             }
 
             //2.Se Crean los candidatos
@@ -127,7 +139,8 @@ namespace WebApiVotacionElectronica.Controllers.SVE
                     Email = votante.Email,
                     Cargo = votante.Cargo,
                     Unidad = votante.Unidad,
-                    Ha_Votado = false
+                    Ha_Votado = false,
+                    Correo_Enviado = null
                 };
                 Votantes.Add(NVot);
             }
@@ -137,7 +150,7 @@ namespace WebApiVotacionElectronica.Controllers.SVE
                 return BadRequest("No se pudieron crear los votantes");
             }
 
-            return Ok("Votacion creada exitosamente");
+            return Ok("Votación creada exitosamente");
 
         }
 
@@ -153,12 +166,80 @@ namespace WebApiVotacionElectronica.Controllers.SVE
 
             if (!votacion_Repository.Update(votacion))
             {
-                return BadRequest("No se pudo activar la votacion");
+                return BadRequest("No se pudo activar la Votación");
             }
 
-            return Ok("Votacion activada correctamente");
+
+            string original = "";
+            string claveSecreta = "T5lne8%4#r7=x%09"; // 16 bytes
+           
+            string BaseURL = configuration["MySettings:WEBVEURL"];
+            string URL = "";
+
+            List<Votante> Votantes = votante_Repository.GetAllByVotacionID(ID);            
+            foreach (var votante in Votantes)
+            {
+                original = votante.Rut+"-"+votante.Id+-+votante.Votacion_ID;
+                URL = BaseURL+Encrypt(original, claveSecreta);
+
+
+                var workItem = new EmailWorkItem
+                {
+                    Destinatario = votante.Email,
+                    Nombre = votante.Nombre_Completo,
+                    Asunto = votacion.Nombre,
+                    Link = URL,
+                    VotanteId = votante.Id
+                };
+
+                emailQueue.Enqueue(workItem);
+
+            }
+          
+            return Ok("Votación activada correctamente");
         }
 
+
+
+        //[Authorize]
+        [HttpPut]
+        [Route("CerrarVotacion/{ID}")]
+        public IActionResult CerrarVotacion(int ID) 
+        {
+            Votacion votacion = votacion_Repository.GetById(ID);
+            votacion.Activa = false;
+            votacion.Estado_Votacion = estado_Votacion_Repository.GetEstadoByDescr("Con Resultado");
+
+            if (!votacion_Repository.Update(votacion))
+            {
+                return BadRequest("No se pudo Cerrar la Votación");
+            }
+
+            // ahora se marcan los candidatos
+
+            List<int> CandidatosIDs = voto_Repository.TopCandidatos(votacion.CandidatosXvoto,ID);
+
+            Candidato candidato = new Candidato();
+            List<Candidato> candidatos = new();
+
+            foreach (int id in CandidatosIDs) 
+            {
+                candidato = new();
+                candidato = candidato_Repository.GetById(id);
+                candidato.Estado_Candidato = estado_Candidato_Repository.GetEstadoByDescr("Seleccionado");
+                candidatos.Add(candidato);
+
+            }
+
+            //se actulizan 
+            if (!candidato_Repository.UpdateAll(candidatos))
+            {
+                return BadRequest("Error al Buscar Candidatos");
+                
+            }
+
+            return Ok("Periodo de Votación Cerrado Correctamente");
+        }
 
         //Votacion
 
@@ -169,14 +250,14 @@ namespace WebApiVotacionElectronica.Controllers.SVE
             //1.Revisar que el votante no haya votado
             if (votante_Repository.Ha_Votado(ID_Votante, ID_Votacion))
             {
-                return BadRequest("El votante ya ha votado en esta votacion");
+                return BadRequest("El votante ya ha votado en esta Votación");
             }
 
             //2.Revisar que la votacion este activa
             Votacion votacion = votacion_Repository.GetById(ID_Votacion);
             if (votacion == null || !votacion.Activa)
             {
-                return BadRequest("La votacion no esta activa");
+                return BadRequest("La Votación no esta activa");
             }
 
             //3.Revisar que la cantidad de candidatos seleccionados no supere el limite
@@ -197,9 +278,10 @@ namespace WebApiVotacionElectronica.Controllers.SVE
                 //Voto en blanco se ingresa como nulo
                 NV = new()
                 {
-                    Votante = votante,
+                    Votante = ID_Votante,
                     Candidato = null,
                     FechaVoto = DateTime.Now,
+                    Votacion_ID = ID_Votacion
                 };
                 Votos.Add(NV);
 
@@ -210,9 +292,10 @@ namespace WebApiVotacionElectronica.Controllers.SVE
                 {
                     NV = new()
                     {
-                        Votante = votante,
-                        Candidato = candidato_Repository.GetById(IDC),
+                        Votante = ID_Votante,
+                        Candidato = IDC,
                         FechaVoto = DateTime.Now,
+                        Votacion_ID = ID_Votacion
                     };
                     Votos.Add(NV);
                 }
@@ -243,46 +326,176 @@ namespace WebApiVotacionElectronica.Controllers.SVE
 
 
 
-        //envio correos
-        [HttpPost("Correos/{ID}")]
-        public IActionResult EnviarCorreosVotacion(int ID)
+        //[Authorize]
+        [HttpPost]
+        [Route("SGVE/{IDVE}/{IDC}")]
+        public IActionResult SeleccionarGanador(int IDVE,int IDC) 
         {
-            //Lógica para enviar correos
-            List<Votante> Votantes = votante_Repository.GetAllByVotacionID(ID);
-            Votacion votacion = votacion_Repository.GetById(ID);
-            foreach (var votante in Votantes)
-            {
-                emailQueue.Enqueue(async () =>
-                {
-                    await MailHelper.EnviarCorreoPersonalizadoAsync(
-                        configuration,
-                        votante.Email,
-                        votante.Nombre_Completo,
-                        votacion.Nombre,
-                        "TEST"
-                    );
 
-                    logger.LogInformation($"Correo encolado para {votante.Nombre_Completo} ({votante.Email})");
-                });
+            if (IDC == 0) 
+            {
+                Votacion votacionN = votacion_Repository.GetById(IDVE);
+                votacionN.Estado_Votacion = estado_Votacion_Repository.GetEstadoByDescr("Nula");
+                if (!votacion_Repository.Update(votacionN))
+                {
+                    return BadRequest("No se pudo Finalizar la Votación");
+                }
+
+
+                List<int> CandidatosIDsN = voto_Repository.TopCandidatos(votacionN.CandidatosXvoto, IDVE);
+
+                Candidato candidatoN = new Candidato();
+                List<Candidato> candidatosN = new();
+
+                foreach (int id in CandidatosIDsN)
+                {
+                    candidatoN = new();
+                    candidatoN = candidato_Repository.GetById(id);
+                    candidatoN.Estado_Candidato = estado_Candidato_Repository.GetEstadoByDescr("Disponible");
+                    
+                    candidatosN.Add(candidatoN);
+
+                }
+
+                //se actulizan 
+                if (!candidato_Repository.UpdateAll(candidatosN))
+                {
+                    return BadRequest("Error al Actulizar Candidatos");
+
+                }
+
+                return Ok("Votación Anulada Correctamente");
+
             }
 
-            return Ok(new { mensaje = $"Se encolaron {Votantes.Count} correos para envío en segundo plano." });
 
+            Votacion votacion = votacion_Repository.GetById(IDVE);
+            votacion.Estado_Votacion = estado_Votacion_Repository.GetEstadoByDescr("Finalizada");
+
+            if (!votacion_Repository.Update(votacion))
+            {
+                return BadRequest("No se pudo Finalizar la Votación");
+            }
+
+            // ahora se marcan los candidatos
+
+            List<int> CandidatosIDs = voto_Repository.TopCandidatos(votacion.CandidatosXvoto, IDVE);
+
+            Candidato candidato = new Candidato();
+            List<Candidato> candidatos = new();
+
+            foreach (int id in CandidatosIDs)
+            {
+                candidato = new();
+                candidato = candidato_Repository.GetById(id);
+                if (id == IDC)
+                {
+                    candidato.Estado_Candidato = estado_Candidato_Repository.GetEstadoByDescr("Aceptado");
+                }
+                else
+                {
+                    candidato.Estado_Candidato = estado_Candidato_Repository.GetEstadoByDescr("Disponible");
+                }
+                candidatos.Add(candidato);
+
+            }
+
+            //se actulizan 
+            if (!candidato_Repository.UpdateAll(candidatos))
+            {
+                return BadRequest("Error al Actulizar Candidatos");
+
+            }
+
+            return Ok("Votación Finalizada Correctamente");
+            
         }
 
-        //funcoines de apoyo
-        [HttpGet("TEST")]
-        public IActionResult TEST()
+
+
+        //envio correos
+        //[Authorize]
+        [HttpPost]
+        [Route("Correos/{ID}")]
+        public IActionResult CorreosVotacion(int ID)
         {
-            string original = "19952098-100-4";
+            Votacion votacion = votacion_Repository.GetById(ID);
+
+            string original = "";
             string claveSecreta = "T5lne8%4#r7=x%09"; // 16 bytes
-                                  
 
-            string encriptado = Encrypt(original, claveSecreta);
+            string BaseURL = configuration["MySettings:WEBVEURL"];
+            string URL = "";
 
-            return Ok(new { original, encriptado });
+            List<Votante> Votantes = votante_Repository.GetAllByVotacionIDPendientes(ID);
+            foreach (var votante in Votantes)
+            {
+                original = votante.Rut + "-" + votante.Id + -+votante.Votacion_ID;
+                URL = BaseURL + Encrypt(original, claveSecreta);
+
+
+                var workItem = new EmailWorkItem
+                {
+                    Destinatario = votante.Email,
+                    Nombre = votante.Nombre_Completo,
+                    Asunto = votacion.Nombre,
+                    Link = URL,
+                    VotanteId = votante.Id
+                };
+
+                emailQueue.Enqueue(workItem);
+
+            }
+
+            return Ok();
         }
 
+
+        //[Authorize]
+        [HttpGet]
+        [Route("InfoVE/{ID}")]
+        public IActionResult GetInfoVotacion(int ID) 
+        {
+            Votacion votacion = votacion_Repository.GetById(ID);
+            List<CandidatoxVoto_DataHolder> Candidatos = new();
+            if (votacion.Estado_Votacion.Descripcion == "Finalizada")
+            {
+                Candidato CG = candidato_Repository.GetByIdVotacionGanador(ID);
+                CandidatoxVoto_DataHolder DVEDH = new()
+                {
+                    candidatoid = CG.Id,
+                    Total = voto_Repository.votosByIDcandidato(CG.Id),
+                    Candidato = CG,
+                    Ganador = true
+                };
+
+                Candidatos.Add(DVEDH);
+            }
+            else
+            {
+                Candidatos = voto_Repository.Candidatos(votacion.CandidatosXvoto, ID);
+
+                foreach (var item in Candidatos)
+                {
+                    item.Candidato = candidato_Repository.GetById(item.candidatoid);
+
+                }
+            }
+
+
+
+            INFOVE_DataHolder INFO = new()
+            {
+                Totalnulos = voto_Repository.TotalNulosByIDVotacion(ID),
+                TotalVotos = voto_Repository.TotalVotosByIDVotacion(ID),               
+                Candidatos_Top = Candidatos
+            };
+
+            return Ok(INFO); 
+        }
+        
+
+  
         [HttpPost("GetVotar")]
         public IActionResult TEST2([FromBody] string CODE)
         {
@@ -309,10 +522,10 @@ namespace WebApiVotacionElectronica.Controllers.SVE
 
                 if (votante.Ha_Votado)
                 {
-                    return BadRequest("El votante ya ha votado en esta votacion");
+                    return BadRequest("El votante ya ha votado en esta Votación");
                 }
 
-                Votacion votacion = votacion_Repository.GetById(int.Parse(partes[2]));
+                Votacion votacion = votacion_Repository.GetByIdNoTrack(int.Parse(partes[2]));
 
                 List<Candidato> candidatos = candidato_Repository.GetAllByVotacionID(votacion.Id);
 

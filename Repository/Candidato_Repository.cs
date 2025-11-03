@@ -1,4 +1,5 @@
-﻿using WebApiVotacionElectronica.Context;
+﻿using Microsoft.EntityFrameworkCore;
+using WebApiVotacionElectronica.Context;
 using WebApiVotacionElectronica.Models.SVE;
 using WebApiVotacionElectronica.Repository.Interfaces;
 
@@ -42,7 +43,18 @@ namespace WebApiVotacionElectronica.Repository
 
         public Candidato GetById(int ID)
         {
-            return context.SVE_Candidatos.Where(c => c.Id == ID).FirstOrDefault();
+            return context.SVE_Candidatos.Where(c => c.Id == ID).Include(x => x.Estado_Candidato).FirstOrDefault();
+        }
+
+        public bool UpdateAll(List<Candidato> Candidatos)
+        {
+            context.SVE_Candidatos.UpdateRange(Candidatos);
+            return SaveAll(Candidatos.Count);
+        }
+
+        public Candidato GetByIdVotacionGanador(int IDVE)
+        {
+            return context.SVE_Candidatos.Where(x => x.Votacion_ID == IDVE && x.Estado_Candidato.Descripcion == "Aceptado").FirstOrDefault();
         }
     }
 }

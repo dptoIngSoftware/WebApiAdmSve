@@ -20,6 +20,7 @@ namespace WebApiVotacionElectronica.Models.SVE
         [MaxLength(50)]
         public string Unidad { get; set; }
         public bool Ha_Votado { get; set; }
+        public bool? Correo_Enviado { get; set; }
 
 
     }

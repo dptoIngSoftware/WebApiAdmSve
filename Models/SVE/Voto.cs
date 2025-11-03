@@ -7,8 +7,9 @@ namespace WebApiVotacionElectronica.Models.SVE
     {
         [Key]
         public int Id { get; set; }
-        public Votante Votante { get; set; }
-        public Candidato? Candidato { get; set; }
+        public int Votante { get; set; }
+        public int? Candidato { get; set; }
+        public int Votacion_ID { get; set; }
         public DateTime FechaVoto { get; set; }
     }
 }

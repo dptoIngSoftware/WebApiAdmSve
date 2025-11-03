@@ -27,14 +27,14 @@ namespace WebApiVotacionElectronica.Models.Tools
                     }
 
                     string nombreSistema = new ConfigurationBuilder().AddJsonFile("appsettings.json").Build().GetSection("MySettings")["NombreSistema"];
-                    string passOrigen = new ConfigurationBuilder().AddJsonFile("appsettings.json").Build().GetSection("MailConfiguration")["PassCorreoSistema"];
-                    string emailSend = new ConfigurationBuilder().AddJsonFile("appsettings.json").Build().GetSection("MailConfiguration")["CorreoSistema"];
-                    string smtpSistema = new ConfigurationBuilder().AddJsonFile("appsettings.json").Build().GetSection("MailConfiguration")["SmtpCorreoSistema"];
-                    string puerto = new ConfigurationBuilder().AddJsonFile("appsettings.json").Build().GetSection("MailConfiguration")["PuertoCorreoSistema"];
-                    string emailDestino = new ConfigurationBuilder().AddJsonFile("appsettings.json").Build().GetSection("MailConfiguration")["CorreoAdministrador"];
+                    string passOrigen = new ConfigurationBuilder().AddJsonFile("appsettings.json").Build().GetSection("MailConfigurationADM")["PassCorreoSistema"];
+                    string emailSend = new ConfigurationBuilder().AddJsonFile("appsettings.json").Build().GetSection("MailConfigurationADM")["CorreoSistema"];
+                    string smtpSistema = new ConfigurationBuilder().AddJsonFile("appsettings.json").Build().GetSection("MailConfigurationADM")["SmtpCorreoSistema"];
+                    string puerto = new ConfigurationBuilder().AddJsonFile("appsettings.json").Build().GetSection("MailConfigurationADM")["PuertoCorreoSistema"];
+                    string emailDestino = new ConfigurationBuilder().AddJsonFile("appsettings.json").Build().GetSection("MailConfigurationADM")["CorreoAdministrador"];
                     string subject = "Excepción en " + nombreSistema;
                     string body = "";
-                    string bodyHtml = new ConfigurationBuilder().AddJsonFile("appsettings.json").Build().GetSection("MailConfiguration")["IsBodyHtml"];
+                    string bodyHtml = new ConfigurationBuilder().AddJsonFile("appsettings.json").Build().GetSection("MailConfigurationADM")["IsBodyHtml"];
                     #pragma warning disable CS8602 // Desreferencia de una referencia posiblemente NULL.
                     bool bodyHtmls = bodyHtml.Equals("Si") ? true : false;
                     #pragma warning restore CS8602 // Desreferencia de una referencia posiblemente NULL.

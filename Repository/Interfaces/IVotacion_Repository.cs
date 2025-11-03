@@ -7,6 +7,7 @@ namespace WebApiVotacionElectronica.Repository.Interfaces
     {
         List<Votacion> GetAll(Filtro_DataHolder Filtro);
         Votacion GetById(int id);
+        Votacion GetByIdNoTrack(int id);
         bool Create(Votacion votacion);
         bool Update(Votacion votacion);
         bool Save();

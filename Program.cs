@@ -67,8 +67,8 @@ builder.Services.AddCors(options =>
     });
 });
 
-builder.Services.AddSingleton<IBackgroundEmailQueue, BackgroundEmailQueue>();
 builder.Services.AddHostedService<EmailBackgroundService>();
+builder.Services.AddSingleton<IBackgroundEmailQueue, BackgroundEmailQueue>();
 
 Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
 
