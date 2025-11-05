@@ -1,4 +1,5 @@
 ﻿using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 using System.Diagnostics.Contracts;
 
 namespace WebApiVotacionElectronica.Models.SVE
@@ -11,5 +12,8 @@ namespace WebApiVotacionElectronica.Models.SVE
         public int? Candidato { get; set; }
         public int Votacion_ID { get; set; }
         public DateTime FechaVoto { get; set; }
+
+        [ForeignKey(nameof(Candidato))]
+        public Candidato? CandidatoInfo { get; set; }
     }
 }

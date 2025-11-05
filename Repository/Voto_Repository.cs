@@ -17,19 +17,95 @@ namespace WebApiVotacionElectronica.Repository
 
         public List<CandidatoxVoto_DataHolder> Candidatos(int top, int VotacionID)
         {
-            var Top = context.SVE_Votos.Where(v => v.Candidato != null && v.Votacion_ID == VotacionID)
-                            .GroupBy(v => v.Candidato)
-                            .Select(g => new CandidatoxVoto_DataHolder 
-                            {
-                                candidatoid = g.Key.Value,
-                                Total = g.Count(),
-                                Candidato = null,
-                                Ganador = null
-                            })
-                            .OrderByDescending(x => x.Total)
-                            .Take(top).ToList();
+            var topCandidatos = context.SVE_Votos
+                .Include(v => v.CandidatoInfo)
+                .ThenInclude(c => c.Estado_Candidato)
+                .Where(v => v.Candidato != null
+                    && v.Votacion_ID == VotacionID)
+                .GroupBy(v => v.CandidatoInfo)
+                .Select(g => new CandidatoxVoto_DataHolder
+                {
+                    candidatoid = g.Key.Id,
+                    Total = g.Count(),
+                    Candidato = g.Key,
+                    Ganador = null
+                })
+                .Where(x => x.Total > 0)
+                .OrderByDescending(x => x.Total)
+                .Take(top)
+                .ToList();
 
-            return Top;
+            return topCandidatos;
+        }
+
+        public List<CandidatoxVoto_DataHolder> CandidatosAceptados(int top, int VotacionID)
+        {
+            var topCandidatos = context.SVE_Votos
+                .Include(v => v.CandidatoInfo)
+                .ThenInclude(c => c.Estado_Candidato)
+                .Where(v => v.Candidato != null
+                    && v.Votacion_ID == VotacionID
+                    && v.CandidatoInfo.Estado_Candidato.Descripcion == "Aceptado")
+                .GroupBy(v => v.CandidatoInfo)
+                .Select(g => new CandidatoxVoto_DataHolder
+                {
+                    candidatoid = g.Key.Id,
+                    Total = g.Count(),
+                    Candidato = g.Key,
+                    Ganador = true
+                })
+                .OrderByDescending(x => x.Total)
+                .Take(top)
+                .ToList();
+
+            return topCandidatos;
+        }
+
+        public List<CandidatoxVoto_DataHolder> CandidatosDisponibles(int top, int VotacionID)
+        {
+            var topCandidatos = context.SVE_Votos
+                .Include(v => v.CandidatoInfo)
+                .ThenInclude(c => c.Estado_Candidato)
+                .Where(v => v.Candidato != null
+                    && v.Votacion_ID == VotacionID
+                    && v.CandidatoInfo.Estado_Candidato.Descripcion == "Disponible")
+                .GroupBy(v => v.CandidatoInfo)
+                .Select(g => new CandidatoxVoto_DataHolder
+                {
+                    candidatoid = g.Key.Id,
+                    Total = g.Count(),
+                    Candidato = g.Key,
+                    Ganador = null
+                })
+                .Where(x => x.Total > 0)
+                .OrderByDescending(x => x.Total)
+                .Take(top)
+                .ToList();
+
+            return topCandidatos;
+        }
+
+        public List<CandidatoxVoto_DataHolder> CandidatosSeleccionados(int top, int VotacionID)
+        {
+            var topCandidatos = context.SVE_Votos
+                .Include(v => v.CandidatoInfo)                     
+                .ThenInclude(c => c.Estado_Candidato)             
+                .Where(v => v.Candidato != null
+                    && v.Votacion_ID == VotacionID
+                    && v.CandidatoInfo.Estado_Candidato.Descripcion == "Seleccionado")
+                .GroupBy(v => v.CandidatoInfo)                     
+                .Select(g => new CandidatoxVoto_DataHolder
+                {
+                    candidatoid = g.Key.Id,
+                    Total = g.Count(),
+                    Candidato = g.Key,                             
+                    Ganador = null
+                })
+                .OrderByDescending(x => x.Total)
+                .Take(top)
+                .ToList();
+
+            return topCandidatos;
         }
 
         public bool CreateAll(List<Voto> Votos)
@@ -57,6 +133,7 @@ namespace WebApiVotacionElectronica.Repository
                                             CandidatoId = g.Key,
                                             TotalVotos = g.Count()
                                         })
+                                        .Where(x => x.TotalVotos > 0)
                                         .OrderByDescending(x => x.TotalVotos)    
                                         .Take(top)                              
                                         .Select(x => x.CandidatoId.Value)              

@@ -12,6 +12,9 @@ namespace WebApiVotacionElectronica.Repository.Interfaces
         int TotalVotosByIDVotacion(int ID_Votacion);
         int TotalNulosByIDVotacion(int ID_Votacion);
         List<CandidatoxVoto_DataHolder> Candidatos(int top, int VotacionID);
+        List<CandidatoxVoto_DataHolder> CandidatosDisponibles(int top, int VotacionID);
+        List<CandidatoxVoto_DataHolder> CandidatosSeleccionados(int top, int VotacionID);
+        List<CandidatoxVoto_DataHolder> CandidatosAceptados(int top, int VotacionID);
         int votosByIDcandidato(int IDC);
     }
 }

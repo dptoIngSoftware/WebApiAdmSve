@@ -341,29 +341,6 @@ namespace WebApiVotacionElectronica.Controllers.SVE
                     return BadRequest("No se pudo Finalizar la Votación");
                 }
 
-
-                List<int> CandidatosIDsN = voto_Repository.TopCandidatos(votacionN.CandidatosXvoto, IDVE);
-
-                Candidato candidatoN = new Candidato();
-                List<Candidato> candidatosN = new();
-
-                foreach (int id in CandidatosIDsN)
-                {
-                    candidatoN = new();
-                    candidatoN = candidato_Repository.GetById(id);
-                    candidatoN.Estado_Candidato = estado_Candidato_Repository.GetEstadoByDescr("Disponible");
-                    
-                    candidatosN.Add(candidatoN);
-
-                }
-
-                //se actulizan 
-                if (!candidato_Repository.UpdateAll(candidatosN))
-                {
-                    return BadRequest("Error al Actulizar Candidatos");
-
-                }
-
                 return Ok("Votación Anulada Correctamente");
 
             }
@@ -377,29 +354,13 @@ namespace WebApiVotacionElectronica.Controllers.SVE
                 return BadRequest("No se pudo Finalizar la Votación");
             }
 
-            // ahora se marcan los candidatos
 
-            List<int> CandidatosIDs = voto_Repository.TopCandidatos(votacion.CandidatosXvoto, IDVE);
 
-            Candidato candidato = new Candidato();
-            List<Candidato> candidatos = new();
-
-            foreach (int id in CandidatosIDs)
+            List<Candidato> candidatos = candidato_Repository.GetAllSelecByVotacionID(IDVE);
+            foreach (var item in candidatos)
             {
-                candidato = new();
-                candidato = candidato_Repository.GetById(id);
-                if (id == IDC)
-                {
-                    candidato.Estado_Candidato = estado_Candidato_Repository.GetEstadoByDescr("Aceptado");
-                }
-                else
-                {
-                    candidato.Estado_Candidato = estado_Candidato_Repository.GetEstadoByDescr("Disponible");
-                }
-                candidatos.Add(candidato);
-
+                item.Estado_Candidato = estado_Candidato_Repository.GetEstadoByDescr("Aceptado");
             }
-
             //se actulizan 
             if (!candidato_Repository.UpdateAll(candidatos))
             {
@@ -409,6 +370,16 @@ namespace WebApiVotacionElectronica.Controllers.SVE
 
             return Ok("Votación Finalizada Correctamente");
             
+        }
+
+
+        [Authorize]
+        [HttpGet]
+        [Route("AllV/{IDVE}")]
+        public IActionResult GetAllVotos(int IDVE) 
+        {
+            List<CandidatoxVoto_DataHolder> Candidatos = voto_Repository.Candidatos(1000, IDVE);
+            return Ok(Candidatos);
         }
 
 
@@ -460,26 +431,11 @@ namespace WebApiVotacionElectronica.Controllers.SVE
             List<CandidatoxVoto_DataHolder> Candidatos = new();
             if (votacion.Estado_Votacion.Descripcion == "Finalizada")
             {
-                Candidato CG = candidato_Repository.GetByIdVotacionGanador(ID);
-                CandidatoxVoto_DataHolder DVEDH = new()
-                {
-                    candidatoid = CG.Id,
-                    Total = voto_Repository.votosByIDcandidato(CG.Id),
-                    Candidato = CG,
-                    Ganador = true
-                };
-
-                Candidatos.Add(DVEDH);
+                Candidatos = voto_Repository.CandidatosAceptados(votacion.CandidatosXvoto, ID);
             }
             else
             {
-                Candidatos = voto_Repository.Candidatos(votacion.CandidatosXvoto, ID);
-
-                foreach (var item in Candidatos)
-                {
-                    item.Candidato = candidato_Repository.GetById(item.candidatoid);
-
-                }
+                Candidatos = voto_Repository.CandidatosSeleccionados(votacion.CandidatosXvoto , ID);
             }
 
 
@@ -492,6 +448,39 @@ namespace WebApiVotacionElectronica.Controllers.SVE
             };
 
             return Ok(INFO); 
+        }
+
+
+        //[Authorize]
+        [HttpPost]
+        [Route("CGVE/{IDVE}/{IDC}")]
+        public IActionResult CambiarGanador(int IDVE, int IDC)
+        {
+            Votacion votacion = votacion_Repository.GetById(IDVE);
+            List<CandidatoxVoto_DataHolder> Candidatos = voto_Repository.CandidatosDisponibles(1, IDVE);
+            Candidato CandidatoR = candidato_Repository.GetById(IDC);
+            // nop hay mas candidatos para dejar como ganador
+            if ( Candidatos == null || Candidatos.Count == 0)
+            {
+                return BadRequest("CD0");
+            }
+
+            //poner mensaje de que si en candidato tiene 0 votos retorne CD0V
+
+            List<Candidato> CVEs = new();
+            CandidatoR.Estado_Candidato = estado_Candidato_Repository.GetEstadoByDescr("Rechazado");
+            Candidatos[0].Candidato.Estado_Candidato = estado_Candidato_Repository.GetEstadoByDescr("Seleccionado");
+
+            CVEs.Add(CandidatoR);
+            CVEs.Add(Candidatos[0].Candidato);
+
+            if (!candidato_Repository.UpdateAll(CVEs))
+            {
+                return BadRequest("EUCD");   
+            }
+
+
+            return Ok("Cambio Realizado con exito");
         }
         
 

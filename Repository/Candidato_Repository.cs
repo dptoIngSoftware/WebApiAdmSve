@@ -56,5 +56,15 @@ namespace WebApiVotacionElectronica.Repository
         {
             return context.SVE_Candidatos.Where(x => x.Votacion_ID == IDVE && x.Estado_Candidato.Descripcion == "Aceptado").FirstOrDefault();
         }
+
+        public List<Candidato> GetAllSelecByVotacionID(int ID)
+        {
+            return context.SVE_Candidatos.Where(c => c.Votacion_ID == ID && c.Estado_Candidato.Descripcion == "Seleccionado").Include(c => c.Estado_Candidato).ToList();
+        }
+
+        public List<Candidato> GetAllSelected(int IDVE)
+        {
+            return context.SVE_Candidatos.Where(x => x.Votacion_ID == IDVE && x.Estado_Candidato.Descripcion == "Aceptado").ToList();
+        }
     }
 }
