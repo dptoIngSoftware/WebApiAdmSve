@@ -54,7 +54,7 @@ namespace WebApiVotacionElectronica.Controllers.SVE
         }
 
 
-        //[Authorize]
+        [Authorize]
         [HttpPost("GetAll")]
         public IActionResult GetAllVotaciones([FromBody] Filtro_DataHolder Filtro)
         {
@@ -62,7 +62,7 @@ namespace WebApiVotacionElectronica.Controllers.SVE
             return Ok(votaciones);
         }
 
-        //[Authorize]
+        [Authorize]
         [HttpPost("Crear")]
         public async Task<IActionResult> CrearVotacion([FromForm] Votacion_DataHolder Nueva_Votacion)
         {
@@ -155,7 +155,7 @@ namespace WebApiVotacionElectronica.Controllers.SVE
         }
 
 
-        //[Authorize]
+        [Authorize]
         [HttpPut]
         [Route("Activar/{ID}")]
         public IActionResult ActivarVotacion(int ID)
@@ -201,7 +201,7 @@ namespace WebApiVotacionElectronica.Controllers.SVE
 
 
 
-        //[Authorize]
+        [Authorize]
         [HttpPut]
         [Route("CerrarVotacion/{ID}")]
         public IActionResult CerrarVotacion(int ID) 
@@ -326,7 +326,7 @@ namespace WebApiVotacionElectronica.Controllers.SVE
 
 
 
-        //[Authorize]
+        [Authorize]
         [HttpPost]
         [Route("SGVE/{IDVE}/{IDC}")]
         public IActionResult SeleccionarGanador(int IDVE,int IDC) 
@@ -385,7 +385,7 @@ namespace WebApiVotacionElectronica.Controllers.SVE
 
 
         //envio correos
-        //[Authorize]
+        [Authorize]
         [HttpPost]
         [Route("Correos/{ID}")]
         public IActionResult CorreosVotacion(int ID)
@@ -422,7 +422,7 @@ namespace WebApiVotacionElectronica.Controllers.SVE
         }
 
 
-        //[Authorize]
+        [Authorize]
         [HttpGet]
         [Route("InfoVE/{ID}")]
         public IActionResult GetInfoVotacion(int ID) 
@@ -451,7 +451,7 @@ namespace WebApiVotacionElectronica.Controllers.SVE
         }
 
 
-        //[Authorize]
+        [Authorize]
         [HttpPost]
         [Route("CGVE/{IDVE}/{IDC}")]
         public IActionResult CambiarGanador(int IDVE, int IDC)
