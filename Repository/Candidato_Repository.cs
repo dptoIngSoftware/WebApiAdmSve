@@ -66,5 +66,18 @@ namespace WebApiVotacionElectronica.Repository
         {
             return context.SVE_Candidatos.Where(x => x.Votacion_ID == IDVE && x.Estado_Candidato.Descripcion == "Aceptado").ToList();
         }
+
+        public Task<bool> DeleteALlByIDVotacion(int ID)
+        {
+            throw new NotImplementedException();
+        }
+
+        public async Task<bool> DeleteAllByIDVotacion(int ID)
+        {
+            
+            int filasEliminadas = await context.SVE_Candidatos.Where(c => c.Votacion_ID == ID).ExecuteDeleteAsync();
+            return filasEliminadas > 0;
+
+        }
     }
 }

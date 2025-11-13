@@ -156,6 +156,143 @@ namespace WebApiVotacionElectronica.Controllers.SVE
 
 
         [Authorize]
+        [HttpPost("Editar/{ID}")]
+        public async Task<IActionResult> EditarVotacion([FromForm] Votacion_DataHolder Nueva_Votacion, int ID)
+        {
+
+            Votacion NV = votacion_Repository.GetById(ID);
+            bool NVS = false;
+            bool NCS = false;
+
+
+            //se carga los candidatos nuevos
+            if (Nueva_Votacion.Candidatos_doc != null)
+            {
+                try
+                {
+
+                    Nueva_Votacion.Candidatos = await LeerExcelPersonasAsync(Nueva_Votacion.Candidatos_doc);
+
+                }
+                catch (Exception)
+                {
+
+                    return BadRequest("XLSBAD");
+                }
+                finally 
+                {
+                    NCS = true;
+                }
+
+            }
+            //se carga los Votantes nuevos
+            if (Nueva_Votacion.Votantes_doc != null)
+            {
+                try
+                {
+
+                    Nueva_Votacion.Votantes = await LeerExcelPersonasAsync(Nueva_Votacion.Votantes_doc);
+                }
+                catch (Exception)
+                {
+
+                    return BadRequest("XLSBAD");
+                }
+                finally
+                {
+                    NVS = true;
+                }
+
+            }
+
+            if (NCS)
+            {
+                //2.Se Crean los candidatos
+                if (!await candidato_Repository.DeleteAllByIDVotacion(NV.Id))
+                {
+                    return BadRequest("NDC");
+                }
+                List<Candidato> Candidatos = new();
+                Candidato NC = new();
+                foreach (var candidato in Nueva_Votacion.Candidatos)
+                {
+                    string[] partes = candidato.Rut.Split('-');
+                    NC = new()
+                    {
+                        Votacion_ID = NV.Id,
+                        Rut = partes[0],
+                        DV = partes[1],
+                        Nombre_Completo = candidato.Nombre_Completo.ToUpperInvariant(),
+                        Email = candidato.Email,
+                        Cargo = candidato.Cargo,
+                        Unidad = candidato.Unidad,
+                        Estado_Candidato = estado_Candidato_Repository.GetEstadoByDescr("Disponible")
+
+                    };
+                    Candidatos.Add(NC);
+                }
+
+                if (!candidato_Repository.CreateAll(Candidatos))
+                {
+                    return BadRequest("No se pudieron crear los candidatos");
+                }
+            }
+
+
+            if (NVS)
+            {
+                //3.Se crean los votantes
+
+                if (!await votante_Repository.DeleteAllByIDVotacion(NV.Id))
+                {
+                    return BadRequest("NDV");
+
+                }
+
+                List<Votante> Votantes = new();
+                Votante NVot = new();
+                foreach (var votante in Nueva_Votacion.Votantes)
+                {
+                    string[] partes = votante.Rut.Split('-');
+                    NVot = new()
+                    {
+                        Votacion_ID = NV.Id,
+                        Rut = partes[0],
+                        DV = partes[1],
+                        Nombre_Completo = votante.Nombre_Completo,
+                        Email = votante.Email,
+                        Cargo = votante.Cargo,
+                        Unidad = votante.Unidad,
+                        Ha_Votado = false,
+                        Correo_Enviado = null
+                    };
+                    Votantes.Add(NVot);
+                }
+
+                if (!votante_Repository.CreateAll(Votantes))
+                {
+                    return BadRequest("No se pudieron crear los votantes");
+                }
+            }
+
+
+            NV.Nombre = Nueva_Votacion.Nombre;
+            NV.Descripcion = Nueva_Votacion.Descripcion;
+            NV.FechaInicio = Nueva_Votacion.FechaInicio;
+            NV.FechaTermino = Nueva_Votacion.FechaTermino;
+            NV.CandidatosXvoto = Nueva_Votacion.CandidatosXvoto;
+
+            if (!votacion_Repository.Update(NV))
+            {
+                return BadRequest("No se pudo actualizar la Votación");
+            }
+
+            return Ok("Votación actualizada exitosamente");
+
+        }
+
+
+        [Authorize]
         [HttpPut]
         [Route("Activar/{ID}")]
         public IActionResult ActivarVotacion(int ID)
@@ -381,6 +518,24 @@ namespace WebApiVotacionElectronica.Controllers.SVE
             List<CandidatoxVoto_DataHolder> Candidatos = voto_Repository.Candidatos(1000, IDVE);
             return Ok(Candidatos);
         }
+
+        [Authorize]
+        [HttpGet]
+        [Route("GetData/{Valor}/{IDV}")]
+        public IActionResult GetDataVotacion(int Valor,int IDV)
+        {
+            if (Valor == 1) 
+            {
+                var Cs = candidato_Repository.GetAllByVotacionID(IDV);
+                return Ok(Cs);
+            }
+            else
+            {
+                var Vs = votante_Repository.GetAllByVotacionID(IDV);
+                return Ok(Vs);
+            }
+        }   
+
 
 
 

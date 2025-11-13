@@ -12,9 +12,8 @@ namespace WebApiVotacionElectronica.Models.DataHolder
         public int CandidatosXvoto { get; set; }
         public string Sede { get; set; }
 
-        public IFormFile Candidatos_doc { get; set; }
-        public IFormFile Votantes_doc { get; set; }
-
+        public IFormFile? Candidatos_doc { get; set; }
+        public IFormFile? Votantes_doc { get; set; }
 
         public List<Persona_DataHolder>? Candidatos { get; set; }
         public List<Persona_DataHolder>? Votantes { get; set; }

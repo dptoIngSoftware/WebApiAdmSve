@@ -1,4 +1,5 @@
-﻿using WebApiVotacionElectronica.Context;
+﻿using Microsoft.EntityFrameworkCore;
+using WebApiVotacionElectronica.Context;
 using WebApiVotacionElectronica.Models.SVE;
 using WebApiVotacionElectronica.Repository.Interfaces;
 
@@ -29,6 +30,12 @@ namespace WebApiVotacionElectronica.Repository
         {
             context.SVE_Votantes.AddRange(Votantes);
             return SaveAll(Votantes.Count);
+        }
+
+        public async Task<bool> DeleteAllByIDVotacion(int ID)
+        {
+            int filasEliminadas = await context.SVE_Votantes.Where(c => c.Votacion_ID == ID).ExecuteDeleteAsync();
+            return filasEliminadas > 0;
         }
 
         public bool Exists(int ID_Votante, int ID_Votacion)
