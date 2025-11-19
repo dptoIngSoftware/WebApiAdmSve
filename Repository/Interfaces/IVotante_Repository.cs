@@ -15,6 +15,8 @@ namespace WebApiVotacionElectronica.Repository.Interfaces
         bool Save();
         Task ActualizarEnvioCorreoAsync(int idUsuario, bool envioExitoso);
 
+        int CantidadporVotacionID(int ID_Votacion);
+
         Task<bool> DeleteAllByIDVotacion(int ID);
     }
 }

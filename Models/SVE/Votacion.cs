@@ -17,6 +17,7 @@ namespace WebApiVotacionElectronica.Models.SVE
         public Sede Sede { get; set; }
         public Estado_Votacion Estado_Votacion { get; set; }
         public DateTime FechaCreacion { get; set; }
+        public DateTime? FechaReenvio { get; set; }
 
     }
 }

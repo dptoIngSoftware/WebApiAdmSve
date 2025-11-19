@@ -5,6 +5,7 @@ namespace WebApiVotacionElectronica.Repository.Interfaces
 {
     public interface IVotacion_Repository
     {
+        bool HayActivaSede(int ID);
         List<Votacion> GetAll(Filtro_DataHolder Filtro);
         Votacion GetById(int id);
         Votacion GetByIdNoTrack(int id);

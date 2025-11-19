@@ -152,6 +152,14 @@ namespace WebApiVotacionElectronica.Repository
             return context.SVE_Votos.Where(x => x.Votacion_ID == ID_Votacion).Count();
         }
 
+        public int VotantesqueVotaron(int ID_Votacion)
+        {
+           int count = context.SVE_Votantes
+                .Where(v => v.Votacion_ID == ID_Votacion && v.Ha_Votado)
+                .Count();
+            return count;
+        }
+
         public int votosByIDcandidato(int IDC)
         {
             return context.SVE_Votos.Where(x => x.Candidato == IDC).Count();

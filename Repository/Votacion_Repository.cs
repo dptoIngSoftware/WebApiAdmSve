@@ -82,5 +82,10 @@ namespace WebApiVotacionElectronica.Repository
         {
             return context.SVE_Votaciones.Where(v => v.Id == id).Include(x => x.Sede).Include(x => x.Estado_Votacion).AsNoTracking().FirstOrDefault();
         }
+
+        public bool HayActivaSede(int ID)
+        {
+            return context.SVE_Votaciones.Any(v => v.Sede.Id == ID && v.Estado_Votacion.Descripcion == "Activada");
+        }
     }
 }

@@ -26,6 +26,12 @@ namespace WebApiVotacionElectronica.Repository
             await context.SaveChangesAsync(); 
         }
 
+        public int CantidadporVotacionID(int ID_Votacion)
+        {
+            return context.SVE_Votantes.Count(v => v.Votacion_ID == ID_Votacion);
+
+        }
+
         public bool CreateAll(List<Votante> Votantes)
         {
             context.SVE_Votantes.AddRange(Votantes);

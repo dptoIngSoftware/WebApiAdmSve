@@ -12,6 +12,7 @@ using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Security.Cryptography.Xml;
 using System.Text;
+using System.Text.RegularExpressions;
 using WebApiVotacionElectronica.Helper;
 using WebApiVotacionElectronica.Models.DataHolder;
 using WebApiVotacionElectronica.Models.SVE;
@@ -75,6 +76,32 @@ namespace WebApiVotacionElectronica.Controllers.SVE
             {
 
                 return BadRequest("XLSBAD");
+            }
+
+
+
+            //validaciones
+            List <string> MensajeError = new();
+            if (!ValidarRuts(Nueva_Votacion.Candidatos))
+            {
+                MensajeError.Add("RCINV"); // Ruts Candidatos Invalidos
+            }
+            if (!RutRepetidos(Nueva_Votacion.Candidatos))
+            {
+                MensajeError.Add("RCRPT"); // Ruts Candidatos Repetidos
+            }
+            if (!ValidarRuts(Nueva_Votacion.Votantes))
+            {
+                MensajeError.Add("RVINV"); // Ruts Votantes Invalidos
+            }
+            if (!RutRepetidos(Nueva_Votacion.Votantes))
+            {
+                MensajeError.Add("RVRPT"); // Ruts Votantes Repetidos
+            }
+
+            if (MensajeError.Count != 0)
+            {
+                return BadRequest(MensajeError);
             }
 
             // Lógica para crear una nueva votación
@@ -205,6 +232,41 @@ namespace WebApiVotacionElectronica.Controllers.SVE
 
             }
 
+
+            //validaciones
+            List<string> MensajeError = new();
+            if (NCS)
+            {
+                if (!ValidarRuts(Nueva_Votacion.Candidatos))
+                {
+                    MensajeError.Add("RCINV"); // Ruts Candidatos Invalidos
+                }
+                if (!RutRepetidos(Nueva_Votacion.Candidatos))
+                {
+                    MensajeError.Add("RCRPT"); // Ruts Candidatos Repetidos
+                }
+            }
+
+            if (NVS)
+            {
+                if (!ValidarRuts(Nueva_Votacion.Votantes))
+                {
+                    MensajeError.Add("RVINV"); // Ruts Votantes Invalidos
+                }
+                if (!RutRepetidos(Nueva_Votacion.Votantes))
+                {
+                    MensajeError.Add("RVRPT"); // Ruts Votantes Repetidos
+                }
+            }
+
+
+            if (MensajeError.Count != 0)
+            {
+                return BadRequest(MensajeError);
+            }
+
+
+
             if (NCS)
             {
                 //2.Se Crean los candidatos
@@ -297,7 +359,14 @@ namespace WebApiVotacionElectronica.Controllers.SVE
         [Route("Activar/{ID}")]
         public IActionResult ActivarVotacion(int ID)
         {
+
             Votacion votacion = votacion_Repository.GetById(ID);
+            if (votacion_Repository.HayActivaSede(votacion.Sede.Id))
+            {
+                return BadRequest("YAPS");
+            }
+
+
             votacion.Activa = true;
             votacion.Estado_Votacion = estado_Votacion_Repository.GetEstadoByDescr("Activada");
 
@@ -572,6 +641,12 @@ namespace WebApiVotacionElectronica.Controllers.SVE
                 emailQueue.Enqueue(workItem);
 
             }
+            votacion.FechaReenvio = DateTime.Now;
+            if (!votacion_Repository.Update(votacion))
+            {
+                return BadRequest("No se pudo actualizar la Votación");
+
+            }
 
             return Ok();
         }
@@ -598,7 +673,9 @@ namespace WebApiVotacionElectronica.Controllers.SVE
             INFOVE_DataHolder INFO = new()
             {
                 Totalnulos = voto_Repository.TotalNulosByIDVotacion(ID),
-                TotalVotos = voto_Repository.TotalVotosByIDVotacion(ID),               
+                TotalVotos = voto_Repository.TotalVotosByIDVotacion(ID),
+                VotantesQuevotaron = voto_Repository.VotantesqueVotaron(ID),
+                TotalVotantes = votante_Repository.CantidadporVotacionID(ID),
                 Candidatos_Top = Candidatos
             };
 
@@ -614,7 +691,7 @@ namespace WebApiVotacionElectronica.Controllers.SVE
             Votacion votacion = votacion_Repository.GetById(IDVE);
             List<CandidatoxVoto_DataHolder> Candidatos = voto_Repository.CandidatosDisponibles(1, IDVE);
             Candidato CandidatoR = candidato_Repository.GetById(IDC);
-            // nop hay mas candidatos para dejar como ganador
+            // no hay mas candidatos para dejar como ganador
             if ( Candidatos == null || Candidatos.Count == 0)
             {
                 return BadRequest("CD0");
@@ -637,9 +714,28 @@ namespace WebApiVotacionElectronica.Controllers.SVE
 
             return Ok("Cambio Realizado con exito");
         }
-        
 
-  
+        [Authorize]
+        [HttpPost]
+        [Route("QGVE/{IDC}")]
+        public IActionResult QuitarGanador(int IDC)
+        {
+        
+            Candidato CandidatoR = candidato_Repository.GetById(IDC);
+
+            CandidatoR.Estado_Candidato = estado_Candidato_Repository.GetEstadoByDescr("Rechazado");
+
+            if (!candidato_Repository.Update(CandidatoR))
+            {
+                return BadRequest("Error al Quitar Ganador");
+
+            }
+
+            return Ok("Cambio Realizado con exito");
+        }
+
+
+
         [HttpPost("GetVotar")]
         public IActionResult TEST2([FromBody] string CODE)
         {
@@ -762,7 +858,7 @@ namespace WebApiVotacionElectronica.Controllers.SVE
             }
         }
 
-         private static string Decrypt(string cipherText, string key)
+        private static string Decrypt(string cipherText, string key)
         {
             byte[] fullCipher = Base58.Bitcoin.Decode(cipherText);
             byte[] keyBytes = Encoding.UTF8.GetBytes(key);
@@ -838,5 +934,14 @@ namespace WebApiVotacionElectronica.Controllers.SVE
             }
         }
 
+        private bool ValidarRuts(List<Persona_DataHolder> personas)
+        {
+            return personas.All(p => Regex.IsMatch(p.Rut, @"^\d{7,8}-[\dkK]$"));
+        }
+
+        private bool RutRepetidos(List<Persona_DataHolder> personas)
+        {
+            return personas.Select(x => x.Rut.ToUpper()).Distinct().Count() == personas.Count;
+        }
     }
 }
