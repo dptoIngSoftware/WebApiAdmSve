@@ -1,82 +1,176 @@
-﻿using System.Net.Mail;
+﻿using MailKit.Net.Smtp;
+using MailKit.Security;
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Configuration;
+using MimeKit;
+using MimeKit.Text;
+using System;
+using System.Threading.Tasks;
 
 namespace WebApiVotacionElectronica.Models.Tools
 {
     public class CorreoAdministrador
     {
-        public static void EnviarCorreo(Exception ex, string nombre)
+        private static IConfiguration GetConfig()
+        {
+            return new ConfigurationBuilder()
+                .AddJsonFile("appsettings.json")
+                .Build();
+        }
+
+        public static string PlantillaErrorUCN(string titulo, string contenido)
+        {
+            string html = @"
+<!DOCTYPE html>
+<html lang='es'>
+<head>
+<meta charset='UTF-8' />
+<meta name='viewport' content='width=device-width, initial-scale=1.0' />
+<title>Error en el Sistema</title>
+</head>
+
+<body style='margin:0; padding:0; background:#f4f4f4; font-family:Arial, sans-serif;'>
+
+<table width='100%' cellpadding='0' cellspacing='0' border='0' style='margin:0; padding:0; background:#f4f4f4;'>
+<tr><td align='center'>
+
+<table width='100%' cellpadding='0' cellspacing='0' border='0' 
+       style='max-width:650px; background:#ffffff; border-radius:8px;'>
+
+
+    <tr>
+        <td style='padding:24px 32px 8px 32px; text-align:left;'>
+            <h2 style='color:#c82333; margin:0; font-size:22px;'>
+                ⚠️ " + titulo + @"
+            </h2>
+        </td>
+    </tr>
+
+    <tr>
+        <td style='padding:0 32px 20px 32px;'>
+            <table width='100%' cellpadding='0' cellspacing='0' border='0'
+                   style='background:#f8d7da; border-left:6px solid #c82333; border-radius:6px;'>
+
+                <tr>
+                    <td style='padding:18px;
+                               font-family:Consolas, monospace;
+                               font-size:14px;
+                               color:#721c24;
+                               white-space:pre-wrap;
+                               word-break:break-word;
+                               overflow-wrap:anywhere;
+                               text-align:left !important;'>
+                        {{CONTENIDO_ERROR}}
+                    </td>
+                </tr>
+            </table>
+        </td>
+    </tr>
+
+    <tr>
+        <td style='padding:20px 32px 32px 32px; text-align:center; color:#666; font-size:12px;'>
+            Mensaje generado automáticamente por los sistemas de la<br/>
+            <b>Universidad Católica del Norte</b>. No responda este correo.
+        </td>
+    </tr>
+
+</table>
+
+</td></tr>
+</table>
+
+</body>
+</html>";
+
+            return html.Replace("{{CONTENIDO_ERROR}}", contenido);
+        }
+
+
+        // MÉTODO CENTRAL DE ENVÍO
+        private static async Task SendEmailAsync(string destino, string asunto, string html, string sender)
+        {
+            var config = GetConfig();
+
+            string emailSend = config["MailConfiguration:CorreoSistema"];
+            string passOrigen = config["MailConfiguration:PassCorreoSistema"];
+            string smtpSistema = config["MailConfiguration:SmtpCorreoSistema"];
+            int puerto = int.Parse(config["MailConfiguration:PuertoCorreoSistema"]);
+
+            var email = new MimeMessage();
+            email.From.Add(new MailboxAddress(sender, emailSend));
+            email.To.Add(MailboxAddress.Parse(destino));
+            email.Subject = asunto;
+            email.Body = new TextPart(TextFormat.Html) { Text = html };
+
+            using var smtp = new SmtpClient();
+            await smtp.ConnectAsync(smtpSistema, puerto, SecureSocketOptions.StartTls);
+            await smtp.AuthenticateAsync(emailSend, passOrigen);
+            await smtp.SendAsync(email);
+            await smtp.DisconnectAsync(true);
+        }
+
+        public static string ConstruirDetalleError(HttpContext http, Exception ex, string usuario)
+        {
+            string ambiente = GetConfig()["MySettings:Ambiente"] ?? "No especificado";
+            string sistema = GetConfig()["MySettings:NombreSistema"] ?? "Sistema UCN";
+
+            string ip = http?.Connection?.RemoteIpAddress?.ToString() ?? "IP no disponible";
+            string endpoint = http?.Request?.Path.Value ?? "No disponible";
+            string metodo = http?.Request?.Method ?? "No disponible";
+            string query = http?.Request?.QueryString.Value ?? "";
+            string servidor = Environment.MachineName;
+
+            string fecha = DateTime.Now.ToString("dd-MM-yyyy HH:mm:ss");
+            string errorId = Guid.NewGuid().ToString("N").Substring(0, 12).ToUpper();
+
+            // Sanitizamos el usuario
+            if (string.IsNullOrWhiteSpace(usuario))
+                usuario = "Usuario no identificado";
+
+            return $@"
+<b>FECHA:</b> {fecha}<br/>
+<b>AMBIENTE:</b> {ambiente}<br/>
+<b>SISTEMA:</b> {sistema}<br/>
+<b>SERVIDOR:</b> {servidor}<br/><br/>
+
+<b>ENDPOINT:</b> {endpoint}<br/>
+<b>MÉTODO HTTP:</b> {metodo}<br/>
+<b>QUERY:</b> {query}<br/>
+<b>IP CLIENTE:</b> {ip}<br/>
+<b>USUARIO:</b> {usuario}<br/><br/>
+
+<b>MENSAJE:</b> {ex.Message}<br/><br/>
+
+<b>APLICACIÓN:</b> {ex.Source}<br/>
+<b>MÉTODO CONFLICTIVO:</b> {ex.TargetSite}<br/><br/>
+
+<b>STACK TRACE:</b><br/>{ex.StackTrace}<br/><br/>
+
+<b>INNER EXCEPTION:</b><br/>{ex.InnerException?.ToString() ?? "No disponible"}<br/>";
+        }
+
+        public static async Task EnviarCorreoExcepcion(HttpContext http, Exception ex, string nombreUsuario)
         {
             try
             {
-                string enviarCorreo = new ConfigurationBuilder().AddJsonFile("appsettings.json").Build().GetSection("MySettings")["EnviarCorreo"];
-                bool Enviar = enviarCorreo.Equals("Si") ? true : false;
+                var config = GetConfig();
+                if (config["MySettings:EnviarCorreo"]?.ToLower() != "si")
+                    return;
 
-                if (Enviar)
-                {
-                    //string emailOrigen = "anon_error@ucn.cl";
-                    string nombreCompleto = "Usuario No Identificado";
+                string emailAdmin = config["MailConfiguration:CorreoAdministrador"];
+                string sistema = config["MySettings:NombreSistema"];
 
-                    if (!String.IsNullOrEmpty(nombre))
-                    {
-                        //var handler = new JwtSecurityTokenHandler();
-                        //var jsonToken = handler.ReadToken(token);
-                        //var tokenS = jsonToken as JwtSecurityToken;
-                        //emailOrigen = tokenS.Claims.First(claim => claim.Type == "Email").Value;
-                        //nombreCompleto = tokenS.Claims.First(claim => claim.Type == "Nombre").Value + " " + tokenS.Claims.First(claim => claim.Type == "Paterno").Value + " " + tokenS.Claims.First(claim => claim.Type == "Materno").Value;
-                        nombreCompleto = nombre;
-                    }
+                // Generar contenido automáticamente
+                string contenido = ConstruirDetalleError(http, ex, nombreUsuario);
 
-                    string nombreSistema = new ConfigurationBuilder().AddJsonFile("appsettings.json").Build().GetSection("MySettings")["NombreSistema"];
-                    string passOrigen = new ConfigurationBuilder().AddJsonFile("appsettings.json").Build().GetSection("MailConfigurationADM")["PassCorreoSistema"];
-                    string emailSend = new ConfigurationBuilder().AddJsonFile("appsettings.json").Build().GetSection("MailConfigurationADM")["CorreoSistema"];
-                    string smtpSistema = new ConfigurationBuilder().AddJsonFile("appsettings.json").Build().GetSection("MailConfigurationADM")["SmtpCorreoSistema"];
-                    string puerto = new ConfigurationBuilder().AddJsonFile("appsettings.json").Build().GetSection("MailConfigurationADM")["PuertoCorreoSistema"];
-                    string emailDestino = new ConfigurationBuilder().AddJsonFile("appsettings.json").Build().GetSection("MailConfigurationADM")["CorreoAdministrador"];
-                    string subject = "Excepción en " + nombreSistema;
-                    string body = "";
-                    string bodyHtml = new ConfigurationBuilder().AddJsonFile("appsettings.json").Build().GetSection("MailConfigurationADM")["IsBodyHtml"];
-                    #pragma warning disable CS8602 // Desreferencia de una referencia posiblemente NULL.
-                    bool bodyHtmls = bodyHtml.Equals("Si") ? true : false;
-                    #pragma warning restore CS8602 // Desreferencia de una referencia posiblemente NULL.
+                // Insertar en plantilla
+                string html = PlantillaErrorUCN($"Error en {sistema}", contenido);
 
-                    MailMessage correo = new MailMessage();
-                    #pragma warning disable CS8604 // Posible argumento de referencia nulo
-                    correo.From = new MailAddress(emailSend);
-                    #pragma warning restore CS8604 // Posible argumento de referencia nulo
-                    #pragma warning disable CS8604 // Posible argumento de referencia nulo
-                    correo.To.Add(emailDestino);
-                    #pragma warning restore CS8604 // Posible argumento de referencia nulo
-                    correo.Subject = subject;
-
-                    //StringBuilder sb = new StringBuilder();
-                    body = "Se produjo una excepción en el sistema " + nombreSistema + "<br/><br/><br/>";
-
-                    if (ex != null)
-                    {
-                        body += "MENSAJE     : " + ex.Message.ToString();
-                        body += "<br/>APLICACIÓN  : " + ex.Source?.ToString();
-                        body += "<br/>MÉTODO      : " + ex.TargetSite?.ToString();
-                        body += "<br/>DESCRIPCIÓN : " + ex.StackTrace?.ToString();
-                        body += "<br/>DATA        : " + ex.Data.ToString();
-                        body += "<br/>EX. INTERNA : " + ex.InnerException;
-                        body += "<br/>FIRMADO POR : " + nombreCompleto;
-                    }
-
-                    correo.Body = body + "<br/><br /><br />Nota: este correo es generado de manera automática por favor no responda a este mensaje.";
-                    correo.IsBodyHtml = bodyHtmls;
-                    correo.Priority = MailPriority.High;
-                    SmtpClient smtp = new SmtpClient(smtpSistema);
-                    smtp.Port = int.Parse(puerto);
-
-                    smtp.Credentials = new System.Net.NetworkCredential(emailSend, passOrigen);
-                    smtp.EnableSsl = true;
-                    smtp.Send(correo);
-                }
-
+                await SendEmailAsync(emailAdmin, $"Error en {sistema}", html, "Excepción del Sistema");
             }
-            catch (Exception e)
+            catch
             {
-
+                // Evitar loops
             }
         }
     }

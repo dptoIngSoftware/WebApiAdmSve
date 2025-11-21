@@ -1,11 +1,24 @@
-﻿using System.Net.Mail;
+﻿using MailKit.Net.Smtp;
+using MailKit.Security;
+using MimeKit;
 
 namespace WebApiVotacionElectronica.Helper
 {
-    public static class MailHelper
+    public interface IMailHelper
     {
-        public static async Task<bool> EnviarCorreoPersonalizadoAsync(
-            IConfiguration configuration,
+        Task<bool> EnviarCorreoAsync(string destinatario, string nombre, string asunto, string link);
+    }
+
+    public class MailHelper : IMailHelper
+    {
+        private readonly IConfiguration _config;
+
+        public MailHelper(IConfiguration config)
+        {
+            _config = config;
+        }
+
+        public async Task<bool> EnviarCorreoAsync(
             string destinatario,
             string nombre,
             string asunto,
@@ -13,52 +26,46 @@ namespace WebApiVotacionElectronica.Helper
         {
             try
             {
-                string passOrigen = configuration["MailConfiguration:PassCorreoSistema"];
-                string emailSend = configuration["MailConfiguration:CorreoSistema"];
-                string smtpSistema = configuration["MailConfiguration:SmtpCorreoSistema"];
-                string puerto = configuration["MailConfiguration:PuertoCorreoSistema"];
-                string bodyHtml = configuration["MailConfiguration:IsBodyHtml"];
+                string pass = _config["MailConfiguration:PassCorreoSistema"];
+                string email = _config["MailConfiguration:CorreoSistema"];
+                string smtp = _config["MailConfiguration:SmtpCorreoSistema"];
+                int puerto = int.Parse(_config["MailConfiguration:PuertoCorreoSistema"]);
+                bool isHtml = _config["MailConfiguration:IsBodyHtml"]?.Equals("Si", StringComparison.OrdinalIgnoreCase) == true;
 
-                bool bodyHtmls = bodyHtml != null && bodyHtml.Equals("Si", StringComparison.OrdinalIgnoreCase);
-
-                string rutaPlantilla = Path.Combine(AppContext.BaseDirectory, "Templates", "Correo.html");
-                string html = File.ReadAllText(rutaPlantilla);
+                // Plantilla HTML
+                string ruta = Path.Combine(AppContext.BaseDirectory, "Templates", "Correo.html");
+                string html = await File.ReadAllTextAsync(ruta);
 
                 html = html.Replace("{{Nombre completo}}", nombre)
                            .Replace("{{Nombre de la votación}}", asunto)
                            .Replace("{{LINK}}", link);
 
-                // Este será el cuerpo final que enviarás
-                string cuerpo = html;
+                var msg = new MimeMessage();
+                msg.From.Add(new MailboxAddress("Sistema de Votación", email));
+                msg.To.Add(new MailboxAddress(destinatario, destinatario));
+                msg.Subject = "Invitación a participar en la votación: " + asunto;
 
-                using (MailMessage mensaje = new MailMessage())
+                var body = new BodyBuilder
                 {
-                    mensaje.From = new MailAddress(emailSend);
-                    mensaje.Subject = "Invitación a participar en la votación:" + asunto;
-                    mensaje.Body = cuerpo;
-                    mensaje.IsBodyHtml = bodyHtmls;
-                    mensaje.Priority = MailPriority.Normal;
-                    mensaje.To.Add(destinatario);
+                    HtmlBody = isHtml ? html : null,
+                    TextBody = !isHtml ? html : null
+                };
 
-                    using (SmtpClient smtp = new SmtpClient(smtpSistema))
-                    {
-                        smtp.Port = int.Parse(puerto);
-                        smtp.Credentials = new System.Net.NetworkCredential(emailSend, passOrigen);
-                        smtp.EnableSsl = true;
+                msg.Body = body.ToMessageBody();
 
-                        await smtp.SendMailAsync(mensaje);
-                    }
-                }
+                using var client = new SmtpClient();
+                await client.ConnectAsync(smtp, puerto, SecureSocketOptions.StartTls);
+                await client.AuthenticateAsync(email, pass);
+
+                await client.SendAsync(msg);
+                await client.DisconnectAsync(true);
 
                 return true;
-
             }
             catch
             {
-
                 return false;
             }
-
         }
     }
 }

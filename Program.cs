@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using System.Text;
 using WebApiVotacionElectronica.Context;
+using WebApiVotacionElectronica.Helper;
 using WebApiVotacionElectronica.Repository;
 using WebApiVotacionElectronica.Repository.Interfaces;
 using WebApiVotacionElectronica.Services;
@@ -69,6 +70,7 @@ builder.Services.AddCors(options =>
 
 builder.Services.AddHostedService<EmailBackgroundService>();
 builder.Services.AddSingleton<IBackgroundEmailQueue, BackgroundEmailQueue>();
+builder.Services.AddSingleton<IMailHelper, MailHelper>();
 
 Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
 
