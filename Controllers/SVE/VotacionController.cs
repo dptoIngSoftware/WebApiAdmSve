@@ -1,4 +1,6 @@
-﻿using ExcelDataReader;
+﻿using DinkToPdf;
+using DinkToPdf.Contracts;
+using ExcelDataReader;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -7,7 +9,9 @@ using Microsoft.IdentityModel.Tokens;
 using SimpleBase;
 using System.Buffers.Text;
 using System.Data;
+using System.Globalization;
 using System.IdentityModel.Tokens.Jwt;
+using System.Net.Http;
 using System.Security.Claims;
 using System.Security.Cryptography;
 using System.Security.Cryptography.Xml;
@@ -39,7 +43,7 @@ namespace WebApiVotacionElectronica.Controllers.SVE
         private readonly ISede_Repository sede_Repository;
         private readonly IEstado_Votacion_Repository estado_Votacion_Repository;
 
-        public VotacionController(IServiceProvider serviceProvider,IConfiguration configuration, IBackgroundEmailQueue emailQueue, ILogger<VotacionController> logger, IVoto_Repository voto_Repository, ICandidato_Repository candidato_Repository, IVotante_Repository votante_Repository, IEstado_Candidato_Repository estado_Candidato_Repository, IVotacion_Repository votacion_Repository, ISede_Repository sede_Repository, IEstado_Votacion_Repository estado_Votacion_Repository)
+        public VotacionController(IServiceProvider serviceProvider, IConfiguration configuration, IBackgroundEmailQueue emailQueue, ILogger<VotacionController> logger, IVoto_Repository voto_Repository, ICandidato_Repository candidato_Repository, IVotante_Repository votante_Repository, IEstado_Candidato_Repository estado_Candidato_Repository, IVotacion_Repository votacion_Repository, ISede_Repository sede_Repository, IEstado_Votacion_Repository estado_Votacion_Repository)
         {
             this.serviceProvider = serviceProvider;
             this.configuration = configuration;
@@ -81,7 +85,7 @@ namespace WebApiVotacionElectronica.Controllers.SVE
 
 
             //validaciones
-            List <string> MensajeError = new();
+            List<string> MensajeError = new();
             if (!ValidarRuts(Nueva_Votacion.Candidatos))
             {
                 MensajeError.Add("RCINV"); // Ruts Candidatos Invalidos
@@ -206,7 +210,7 @@ namespace WebApiVotacionElectronica.Controllers.SVE
 
                     return BadRequest("XLSBAD");
                 }
-                finally 
+                finally
                 {
                     NCS = true;
                 }
@@ -378,15 +382,17 @@ namespace WebApiVotacionElectronica.Controllers.SVE
 
             string original = "";
             string claveSecreta = "T5lne8%4#r7=x%09"; // 16 bytes
-           
+
             string BaseURL = configuration["MySettings:WEBVEURL"];
             string URL = "";
 
-            List<Votante> Votantes = votante_Repository.GetAllByVotacionID(ID);            
+            CultureInfo cultura = new CultureInfo("es-ES");
+
+            List<Votante> Votantes = votante_Repository.GetAllByVotacionID(ID);
             foreach (var votante in Votantes)
             {
-                original = votante.Rut+"-"+votante.Id+-+votante.Votacion_ID;
-                URL = BaseURL+Encrypt(original, claveSecreta);
+                original = votante.Rut + "-" + votante.Id + -+votante.Votacion_ID;
+                URL = BaseURL + Encrypt(original, claveSecreta);
 
 
                 var workItem = new EmailWorkItem
@@ -395,13 +401,16 @@ namespace WebApiVotacionElectronica.Controllers.SVE
                     Nombre = votante.Nombre_Completo,
                     Asunto = votacion.Nombre,
                     Link = URL,
+                    DESC = votacion.Descripcion,
+                    FI = votacion.FechaInicio.ToString("dddd dd 'de' MMMM 'del' yyyy", cultura),
+                    FT = votacion.FechaTermino.ToString("dddd dd 'de' MMMM 'del' yyyy", cultura),
                     VotanteId = votante.Id
                 };
 
                 emailQueue.Enqueue(workItem);
 
             }
-          
+
             return Ok("Votación activada correctamente");
         }
 
@@ -410,7 +419,7 @@ namespace WebApiVotacionElectronica.Controllers.SVE
         [Authorize]
         [HttpPut]
         [Route("CerrarVotacion/{ID}")]
-        public IActionResult CerrarVotacion(int ID) 
+        public IActionResult CerrarVotacion(int ID)
         {
             Votacion votacion = votacion_Repository.GetById(ID);
             votacion.Activa = false;
@@ -423,12 +432,12 @@ namespace WebApiVotacionElectronica.Controllers.SVE
 
             // ahora se marcan los candidatos
 
-            List<int> CandidatosIDs = voto_Repository.TopCandidatos(votacion.CandidatosXvoto,ID);
+            List<int> CandidatosIDs = voto_Repository.TopCandidatos(votacion.CandidatosXvoto, ID);
 
             Candidato candidato = new Candidato();
             List<Candidato> candidatos = new();
 
-            foreach (int id in CandidatosIDs) 
+            foreach (int id in CandidatosIDs)
             {
                 candidato = new();
                 candidato = candidato_Repository.GetById(id);
@@ -441,7 +450,7 @@ namespace WebApiVotacionElectronica.Controllers.SVE
             if (!candidato_Repository.UpdateAll(candidatos))
             {
                 return BadRequest("Error al Buscar Candidatos");
-                
+
             }
 
             return Ok("Periodo de Votación Cerrado Correctamente");
@@ -535,10 +544,10 @@ namespace WebApiVotacionElectronica.Controllers.SVE
         [Authorize]
         [HttpPost]
         [Route("SGVE/{IDVE}/{IDC}")]
-        public IActionResult SeleccionarGanador(int IDVE,int IDC) 
+        public IActionResult SeleccionarGanador(int IDVE, int IDC)
         {
 
-            if (IDC == 0) 
+            if (IDC == 0)
             {
                 Votacion votacionN = votacion_Repository.GetById(IDVE);
                 votacionN.Estado_Votacion = estado_Votacion_Repository.GetEstadoByDescr("Nula");
@@ -575,14 +584,14 @@ namespace WebApiVotacionElectronica.Controllers.SVE
             }
 
             return Ok("Votación Finalizada Correctamente");
-            
+
         }
 
 
         [Authorize]
         [HttpGet]
         [Route("AllV/{IDVE}")]
-        public IActionResult GetAllVotos(int IDVE) 
+        public IActionResult GetAllVotos(int IDVE)
         {
             List<CandidatoxVoto_DataHolder> Candidatos = voto_Repository.Candidatos(1000, IDVE);
             return Ok(Candidatos);
@@ -591,9 +600,9 @@ namespace WebApiVotacionElectronica.Controllers.SVE
         [Authorize]
         [HttpGet]
         [Route("GetData/{Valor}/{IDV}")]
-        public IActionResult GetDataVotacion(int Valor,int IDV)
+        public IActionResult GetDataVotacion(int Valor, int IDV)
         {
-            if (Valor == 1) 
+            if (Valor == 1)
             {
                 var Cs = candidato_Repository.GetAllByVotacionID(IDV);
                 return Ok(Cs);
@@ -603,7 +612,7 @@ namespace WebApiVotacionElectronica.Controllers.SVE
                 var Vs = votante_Repository.GetAllByVotacionID(IDV);
                 return Ok(Vs);
             }
-        }   
+        }
 
 
 
@@ -622,6 +631,8 @@ namespace WebApiVotacionElectronica.Controllers.SVE
             string BaseURL = configuration["MySettings:WEBVEURL"];
             string URL = "";
 
+            CultureInfo cultura = new CultureInfo("es-ES");
+
             List<Votante> Votantes = votante_Repository.GetAllByVotacionIDPendientes(ID);
             foreach (var votante in Votantes)
             {
@@ -635,6 +646,9 @@ namespace WebApiVotacionElectronica.Controllers.SVE
                     Nombre = votante.Nombre_Completo,
                     Asunto = votacion.Nombre,
                     Link = URL,
+                    DESC = votacion.Descripcion,
+                    FI = votacion.FechaInicio.ToString("dddd dd 'de' MMMM 'del' yyyy", cultura),
+                    FT = votacion.FechaTermino.ToString("dddd dd 'de' MMMM 'del' yyyy", cultura),
                     VotanteId = votante.Id
                 };
 
@@ -655,7 +669,7 @@ namespace WebApiVotacionElectronica.Controllers.SVE
         [Authorize]
         [HttpGet]
         [Route("InfoVE/{ID}")]
-        public IActionResult GetInfoVotacion(int ID) 
+        public IActionResult GetInfoVotacion(int ID)
         {
             Votacion votacion = votacion_Repository.GetById(ID);
             List<CandidatoxVoto_DataHolder> Candidatos = new();
@@ -665,7 +679,7 @@ namespace WebApiVotacionElectronica.Controllers.SVE
             }
             else
             {
-                Candidatos = voto_Repository.CandidatosSeleccionados(votacion.CandidatosXvoto , ID);
+                Candidatos = voto_Repository.CandidatosSeleccionados(votacion.CandidatosXvoto, ID);
             }
 
 
@@ -679,7 +693,7 @@ namespace WebApiVotacionElectronica.Controllers.SVE
                 Candidatos_Top = Candidatos
             };
 
-            return Ok(INFO); 
+            return Ok(INFO);
         }
 
 
@@ -692,7 +706,7 @@ namespace WebApiVotacionElectronica.Controllers.SVE
             List<CandidatoxVoto_DataHolder> Candidatos = voto_Repository.CandidatosDisponibles(1, IDVE);
             Candidato CandidatoR = candidato_Repository.GetById(IDC);
             // no hay mas candidatos para dejar como ganador
-            if ( Candidatos == null || Candidatos.Count == 0)
+            if (Candidatos == null || Candidatos.Count == 0)
             {
                 return BadRequest("CD0");
             }
@@ -708,7 +722,7 @@ namespace WebApiVotacionElectronica.Controllers.SVE
 
             if (!candidato_Repository.UpdateAll(CVEs))
             {
-                return BadRequest("EUCD");   
+                return BadRequest("EUCD");
             }
 
 
@@ -720,7 +734,7 @@ namespace WebApiVotacionElectronica.Controllers.SVE
         [Route("QGVE/{IDC}")]
         public IActionResult QuitarGanador(int IDC)
         {
-        
+
             Candidato CandidatoR = candidato_Repository.GetById(IDC);
 
             CandidatoR.Estado_Candidato = estado_Candidato_Repository.GetEstadoByDescr("Rechazado");
@@ -734,6 +748,185 @@ namespace WebApiVotacionElectronica.Controllers.SVE
             return Ok("Cambio Realizado con exito");
         }
 
+
+        [Authorize]
+        [HttpGet]
+        [Route("PDF/{id}")]
+        public async Task<IActionResult> GenerarActa(int id) 
+        {
+
+            Votacion votacion = votacion_Repository.GetById(id);
+            List<CandidatoxVoto_DataHolder> candidatos = voto_Repository.Candidatos(20, id);
+
+            INFOVE_DataHolder INFO = new()
+            {
+                Totalnulos = voto_Repository.TotalNulosByIDVotacion(id),
+                TotalVotos = voto_Repository.TotalVotosByIDVotacion(id),
+                VotantesQuevotaron = voto_Repository.VotantesqueVotaron(id),
+                TotalVotantes = votante_Repository.CantidadporVotacionID(id),
+                Candidatos_Top = candidatos
+            };
+
+            var imagePath = Path.Combine(AppContext.BaseDirectory, "Imagenes", "logo-ucn.png");
+            byte[] imageBytes = System.IO.File.ReadAllBytes(imagePath);
+            string base64Image = Convert.ToBase64String(imageBytes);
+
+            string logoUrl = $"data:image/png;base64,{base64Image}";
+
+            string html = GenerateHtml(votacion, INFO, logoUrl); 
+
+            var converter = HttpContext.RequestServices.GetService<IConverter>();
+
+            var doc = new HtmlToPdfDocument()
+            {
+               GlobalSettings = {
+                    PaperSize = PaperKind.A4,
+                    Orientation = Orientation.Portrait,
+               },
+               Objects = {
+                 new ObjectSettings() {
+                    HtmlContent = html,
+                    WebSettings = {
+                        DefaultEncoding = "utf-8",
+                        LoadImages = true
+                    },
+                    LoadSettings = {
+                        BlockLocalFileAccess = false
+                    }
+                 }
+               }
+            };
+
+            var file = converter.Convert(doc);
+
+            return File(file, "application/pdf", "ActaVotacion.pdf");
+        }
+
+        private string GenerateHtml(Votacion votacion, INFOVE_DataHolder INFO, string logoUrl)
+        {
+            CultureInfo cultura = new CultureInfo("es-ES");
+            string FI = votacion.FechaInicio.ToString("dddd dd 'de' MMMM 'del' yyyy", cultura);
+            string FT = votacion.FechaTermino.ToString("dddd dd 'de' MMMM 'del' yyyy", cultura);
+
+            string html = $@"
+            <html>
+            <head>
+                <meta charset='UTF-8'>
+                <style>
+                    body {{
+                        font-family: Arial, sans-serif;
+                        margin: 30px;
+                    }}
+
+                    .center {{
+                        text-align: center;
+                    }}
+
+                    .title {{
+                        font-size: 28px;
+                        font-weight: bold;
+                        margin-top:10px;
+                    }}
+
+                    table {{
+                        width: 100%;
+                        border-collapse: collapse;
+                        margin-top: 20px;
+                    }}
+
+                    thead {{
+                        display: table-header-group;
+                        background-color: #2c3e50;
+                        color: white;
+                    }}
+
+                    tfoot {{
+                        display: table-footer-group;
+                    }}
+
+                    th {{
+                           background-color: #2c3e50;
+                           color: white;
+                           padding: 8px;
+                           text-align: left;
+                           border: 1px solid #ddd;
+                    }}
+
+                    td {{
+                        padding: 8px;
+                        border: 1px solid #ddd;
+                    }}
+
+                    tr {{
+                        page-break-inside: avoid;
+                    }}
+
+                    .section-title {{
+                        margin-top: 25px;
+                        font-size: 20px;
+                        font-weight: bold;
+                    }}
+                </style>
+            </head>
+
+            <body>
+
+                <div class='center'>
+                    <img src='{logoUrl}' style='height:80px; margin-bottom:10px;' />
+                    <div class='title'>Acta del Proceso de Votación</div>
+                </div>
+
+                <p><strong>Nombre:</strong> {votacion.Nombre}.</p>
+                <p><strong>Descripción:</strong> {votacion.Descripcion}.</p>
+                <p><strong>Periodo de Votación:</strong> {FI} hasta el {FT}.</p>
+
+                <div class='section-title'>Resumen General</div>
+
+                <table>
+                    <tbody>
+                        <tr><th>Total de votos válidos</th><td>{INFO.TotalVotos}</td></tr>
+                        <tr><th>Total de votos nulos</th><td>{INFO.Totalnulos}</td></tr>
+                        <tr><th>Personas que votaron</th><td>{INFO.VotantesQuevotaron}</td></tr>
+                        <tr><th>Total de votantes</th><td>{INFO.TotalVotantes}</td></tr>
+                    </tbody>
+                </table>
+
+                <div class='section-title'>Postulantes con votos registrados</div>
+
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Nombre</th>
+                            <th>RUT</th>
+                            <th>Votos</th>
+                        </tr>
+                    </thead>
+                    <tbody>";
+
+                        // generar filas con zebra
+                        bool zebra = false;
+
+                        foreach (var c in INFO.Candidatos_Top)
+                        {
+                            string bg = zebra ? "#f5f5f5" : "#ffffff";
+                            zebra = !zebra;
+
+                            html += $@"
+                            <tr style='background:{bg}; page-break-inside: avoid;'>
+                            <td>{c.Candidato.Nombre_Completo}</td>
+                            <td>{c.Candidato.Rut}-{c.Candidato.DV}</td>
+                            <td>{c.Total}</td>
+                            </tr>";
+                        }
+
+                        html += @"
+                    </tbody>
+                </table>
+            </body>
+            </html>";
+
+            return html;
+        }
 
 
         [HttpPost("GetVotar")]

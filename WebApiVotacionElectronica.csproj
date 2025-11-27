@@ -10,8 +10,13 @@
 	<Content Include="Templates\**\*.html">
 		<CopyToOutputDirectory>Always</CopyToOutputDirectory>
 	</Content>
+	  <Content Include="Imagenes\**\*.*">
+		  <CopyToOutputDirectory>Always</CopyToOutputDirectory>
+	  </Content>
+	<PackageReference Include="DinkToPdf" Version="1.0.8" />
     <PackageReference Include="ExcelDataReader" Version="3.8.0" />
     <PackageReference Include="ExcelDataReader.DataSet" Version="3.8.0" />
+    <PackageReference Include="HtmlToPdfConverter.Core" Version="2.0.0" />
     <PackageReference Include="MailKit" Version="4.14.1" />
     <PackageReference Include="Microsoft.AspNetCore.Authentication.JwtBearer" Version="8.0.21" />
     <PackageReference Include="Microsoft.AspNetCore.Mvc.NewtonsoftJson" Version="8.0.21" />
@@ -29,6 +34,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <Folder Include="Imagenes\" />
     <Folder Include="Templates\" />
   </ItemGroup>
 

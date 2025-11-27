@@ -6,7 +6,7 @@ namespace WebApiVotacionElectronica.Helper
 {
     public interface IMailHelper
     {
-        Task<bool> EnviarCorreoAsync(string destinatario, string nombre, string asunto, string link);
+        Task<bool> EnviarCorreoAsync(string destinatario, string nombre, string asunto, string link,string desc,string fi,string ft);
     }
 
     public class MailHelper : IMailHelper
@@ -22,7 +22,10 @@ namespace WebApiVotacionElectronica.Helper
             string destinatario,
             string nombre,
             string asunto,
-            string link)
+            string link,
+            string desc,
+            string fi,
+            string ft)
         {
             try
             {
@@ -38,7 +41,10 @@ namespace WebApiVotacionElectronica.Helper
 
                 html = html.Replace("{{Nombre completo}}", nombre)
                            .Replace("{{Nombre de la votación}}", asunto)
-                           .Replace("{{LINK}}", link);
+                           .Replace("{{LINK}}", link)
+                           .Replace("{{DESC}}", desc)
+                           .Replace("{{FI}}", fi)
+                           .Replace("{{FT}}", ft);
 
                 var msg = new MimeMessage();
                 msg.From.Add(new MailboxAddress("Sistema de Votación", email));

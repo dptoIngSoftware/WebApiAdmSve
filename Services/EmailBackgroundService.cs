@@ -62,7 +62,10 @@ namespace WebApiVotacionElectronica.Services
                             workItem.Destinatario,
                             workItem.Nombre,
                             workItem.Asunto,
-                            workItem.Link
+                            workItem.Link,
+                            workItem.DESC,
+                            workItem.FI,
+                            workItem.FT
                         );
 
                         if (!enviado)
